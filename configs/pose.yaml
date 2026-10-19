@@ -1,0 +1,21 @@
+# Stage 2: two keypoints per probe (top and bottom base).
+model: yolov8n-pose.pt
+data: data/processed/pose/data.yaml
+noise_aug: true   # extra Albumentations noise / exposure / blur, see erc_pose/train.py
+train:
+  epochs: 100
+  patience: 30
+  imgsz: 960        # probes are 16-160 px long in 960x600 frames; do not downscale
+  batch: 16
+  seed: 0
+  # augmentation (Ultralytics built-ins)
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.5        # lighting changes on the Mars Yard
+  degrees: 0        # rotation inflates axis-aligned boxes of thin objects; flips cover orientation
+  translate: 0.1
+  scale: 0.5        # 0.3-2 m working distance
+  fliplr: 0.5
+  flipud: 0.5
+  mosaic: 1.0
+  close_mosaic: 10

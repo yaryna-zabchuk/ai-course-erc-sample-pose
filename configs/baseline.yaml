@@ -1,0 +1,20 @@
+# Baseline: YOLOv8n fine-tuned on boxes with no augmentation.
+model: yolov8n.pt
+data: data/processed/detect/data.yaml
+noise_aug: false   # extra Albumentations noise / exposure / blur, see erc_pose/train.py
+train:
+  epochs: 100
+  patience: 30
+  imgsz: 960        # probes are 16-160 px long in 960x600 frames; do not downscale
+  batch: 16
+  seed: 0
+  # every augmentation switched off
+  hsv_h: 0.0
+  hsv_s: 0.0
+  hsv_v: 0.0
+  degrees: 0.0
+  translate: 0.0
+  scale: 0.0
+  fliplr: 0.0
+  flipud: 0.0
+  mosaic: 0.0

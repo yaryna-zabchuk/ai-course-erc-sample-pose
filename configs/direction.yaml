@@ -1,0 +1,17 @@
+# Direction classifier: is the probe's top on the left or the right of an axis-aligned crop?
+model: yolov8n-cls.pt
+data: data/direction
+noise_aug: false
+train:
+  epochs: 60
+  patience: 20
+  imgsz: 64
+  batch: 64
+  seed: 0
+  fliplr: 0.0       # a horizontal flip would swap the classes
+  flipud: 0.5       # mirroring across the axis keeps the class
+  hsv_v: 0.5
+  hsv_s: 0.5
+  erasing: 0.0
+  auto_augment: null
+  scale: 0.1        # RandomResizedCrop keeps 90-100% of the crop, so both ends stay visible
