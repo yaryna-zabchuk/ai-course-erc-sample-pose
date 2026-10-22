@@ -167,14 +167,64 @@ def repair_line_boxes(anns_by_image, width_ratio):
     return repaired
 
 
+def load_box_labels(export_dir):
+    """Normalised (cx, cy, w, h) boxes per image stem from a YOLO Detection export (all classes)."""
+    boxes = defaultdict(list)
+    for label in sorted(Path(export_dir).glob("labels/**/*.txt")):
+        for line in label.read_text().splitlines():
+            values = line.split()
+            if len(values) >= 5:
+                boxes[label.stem].append([float(v) for v in values[1:5]])
+    return boxes
+
+
+def attach_boxes(images, anns_by_image, boxes):
+    """Give each axis-line annotation the drawn box around it.
+
+    A line belongs to the smallest box that contains both of its ends (3 px of
+    slack), otherwise to the box whose centre is nearest the line's midpoint.
+    Drawn boxes without a line are added as box-only annotations. Returns the
+    number of lines that got a drawn box.
+    """
+    attached = 0
+    for stem, normalised in boxes.items():
+        if stem not in images:
+            continue
+        width, height = images[stem]["width"], images[stem]["height"]
+        free = [[(cx - w / 2) * width, (cy - h / 2) * height, w * width, h * height] for cx, cy, w, h in normalised]
+        for ann in anns_by_image[stem]:
+            kpts = _keypoints(ann)
+            if kpts is None or not free:
+                continue
+            ends = kpts[:, :2]
+
+            def contains(box, slack=3.0):
+                x, y, w, h = box
+                return all(x - slack <= px <= x + w + slack and y - slack <= py <= y + h + slack for px, py in ends)
+
+            inside = [i for i, box in enumerate(free) if contains(box)]
+            if inside:
+                best = min(inside, key=lambda i: free[i][2] * free[i][3])
+            else:
+                mid = ends.mean(0)
+                best = min(range(len(free)), key=lambda i: np.hypot(free[i][0] + free[i][2] / 2 - mid[0],
+                                                                     free[i][1] + free[i][3] / 2 - mid[1]))
+            ann["bbox"] = free.pop(best)
+            attached += 1
+        anns_by_image[stem].extend({"bbox": box} for box in free)
+    return attached
+
+
 def build(coco_paths=(), out_dir="data/processed", images_dir=None, ratios=(0.70, 0.15, 0.15), seed=0,
           group_regex=DEFAULT_GROUP_REGEX, copy=False, yolo_dirs=(), width_ratio=DEFAULT_WIDTH_RATIO,
           session_gap=DEFAULT_SESSION_GAP_S, extra_train=(), kpt_sigma=DEFAULT_KPT_SIGMA, fold=None, folds=5,
-          kpt_order="labelled"):
+          kpt_order="labelled", box_dirs=()):
     """Build the datasets and return {task: path to its data.yaml}.
 
     `extra_train` YOLO Pose folders (e.g. pseudo-labels) go into the train split
-    only and do not change how the other images are split.
+    only and do not change how the other images are split. `box_dirs` are YOLO
+    Detection exports with drawn boxes for the same images; each axis line gets
+    the box around it instead of an estimated one, and the OBB width comes from it.
     """
     out_dir = Path(out_dir)
     images, anns_by_image = {}, defaultdict(list)
@@ -189,6 +239,9 @@ def build(coco_paths=(), out_dir="data/processed", images_dir=None, ratios=(0.70
             raise ValueError(f"duplicate image name: {sorted(duplicates)[0]}")
         images.update(source_images)
         anns_by_image.update(source_anns)
+    for box_dir in box_dirs:
+        attached = attach_boxes(images, anns_by_image, load_box_labels(box_dir))
+        print(f"{attached} axis label(s) got a drawn box from {box_dir}")
     repaired = repair_line_boxes(anns_by_image, width_ratio)
     if repaired:
         print(f"{repaired} axis label(s) wrapped in a box of width {width_ratio} x length for training")
@@ -248,6 +301,8 @@ def main():
     source.add_argument("--yolo-pose", nargs="+", default=[], help="unzipped Ultralytics YOLO Pose export folder(s)")
     parser.add_argument("--extra-train", nargs="+", default=[],
                         help="YOLO Pose folder(s), e.g. pseudo-labels, added to the train split only")
+    parser.add_argument("--boxes", nargs="+", default=[],
+                        help="YOLO Detection export(s) with drawn boxes for the same images")
     parser.add_argument("--images", help="image folder (default: next to the annotations)")
     parser.add_argument("--out", default="data/processed")
     parser.add_argument("--ratios", nargs=3, type=float, default=(0.70, 0.15, 0.15))
@@ -270,7 +325,7 @@ def main():
         parser.error("pass --coco or --yolo-pose")
     build(args.coco, args.out, args.images, tuple(args.ratios), args.seed, args.group_regex, args.copy,
           args.yolo_pose, args.width_ratio, args.session_gap, args.extra_train,
-          args.kpt_sigma, args.fold, args.folds, args.kpt_order)
+          args.kpt_sigma, args.fold, args.folds, args.kpt_order, args.boxes)
 
 
 if __name__ == "__main__":

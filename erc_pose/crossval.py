@@ -98,6 +98,7 @@ def main():
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--only-folds", type=int, nargs="*", help="run a subset of the folds")
     parser.add_argument("--extra-train", help="YOLO Pose folder (e.g. pseudo-labels) added to every train split")
+    parser.add_argument("--boxes", nargs="+", default=[], help="YOLO Detection export(s) with drawn boxes")
     parser.add_argument("--kpt-order", choices=("labelled", "left-to-right"), default="labelled")
     parser.add_argument("--fuse", action="store_true", help="also evaluate obb with direction from pose")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="training overrides")
@@ -117,12 +118,13 @@ def main():
     data_root, results_root = Path("data/cv") / args.name, Path("results/cv") / args.name
     for fold in args.only_folds if args.only_folds else range(args.folds):
         fold_dir = data_root / f"fold{fold}"
-        build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, kpt_order=args.kpt_order)
+        build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, kpt_order=args.kpt_order,
+              box_dirs=args.boxes)
         if args.extra_train:
             extra, kept = filtered_extra(args.extra_train, fold_dir / "pose", data_root / f"extra{fold}")
             print(f"fold {fold}: {kept} extra training frames")
             build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, extra_train=[extra],
-                  kpt_order=args.kpt_order)
+                  kpt_order=args.kpt_order, box_dirs=args.boxes)
         weights = {}
         for config in args.configs:
             task = task_of(config)

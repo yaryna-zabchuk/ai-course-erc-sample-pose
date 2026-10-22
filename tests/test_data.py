@@ -183,3 +183,16 @@ def test_left_to_right_order():
     assert order_left_to_right(right_first)[0, 0] == 2
     vertical = np.array([[5.0, 9, 2], [5, 1, 2]])  # same x: upper end (smaller y) first
     assert order_left_to_right(vertical)[0, 1] == 1
+
+
+def test_attach_boxes_gives_each_line_its_drawn_box():
+    from erc_pose.data.build_dataset import attach_boxes
+
+    images = {"f": {"width": 100, "height": 100}}
+    line = {"bbox": [10, 10, 20, 0], "keypoints": [10, 10, 2, 30, 10, 2]}
+    anns = {"f": [line]}
+    boxes = {"f": [[0.2, 0.1, 0.3, 0.1],      # contains the line: x 5-35, y 5-15
+                   [0.8, 0.8, 0.1, 0.1]]}     # elsewhere, no line -> box-only annotation
+    assert attach_boxes(images, anns, boxes) == 1
+    assert line["bbox"] == pytest.approx([5, 5, 30, 10])
+    assert len(anns["f"]) == 2 and "keypoints" not in anns["f"][1]

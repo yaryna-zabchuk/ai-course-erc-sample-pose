@@ -195,6 +195,28 @@ original export works without `check_direction`. A fixed left-to-right order
 is worse because near-vertical probes flip between the two orders. OBB is still
 more accurate (2.3-2.9°).
 
+### Drawn boxes
+
+The team also drew a box around each probe (CVAT export in YOLO Detection
+format). `build_dataset --boxes <export>` attaches each drawn box to the axis
+line inside it; the detect and pose models then train on the drawn boxes and the
+OBB gets each probe's real width. 5-fold CV, same folds as above:
+
+| model | estimated boxes | drawn boxes |
+|---|---|---|
+| OBB: axis error / ≤5° / recall | 2.9° ± 0.2 / 85% / 0.91 | 3.3° ± 0.4 / 83% / 0.93 |
+| pose, order-free: axis error / ≤5° / recall | 6.3° ± 3.2 / 65% / 0.94 | 4.7° ± 1.1 / 66% / 0.94 |
+
+Drawn boxes help the pose model (lower and much steadier axis error) and
+slightly raise recall, but not the OBB axis: the drawn widths vary a lot
+(0.13-0.51 of the length), and a loose box around a short probe makes the
+oriented box nearly square, so its long side is less clear.
+
+```bash
+python -m erc_pose.data.build_dataset --yolo-pose data/raw/semi_supervised_fixed \
+    --boxes data/raw/box_labels_task2660063 --out data/processed_boxes
+```
+
 ### If the direction is needed later
 
 A pose model can add the top/bottom direction to the OBB axis
