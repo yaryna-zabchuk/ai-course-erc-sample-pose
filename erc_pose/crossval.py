@@ -99,9 +99,14 @@ def main():
     parser.add_argument("--only-folds", type=int, nargs="*", help="run a subset of the folds")
     parser.add_argument("--extra-train", help="YOLO Pose folder (e.g. pseudo-labels) added to every train split")
     parser.add_argument("--boxes", nargs="+", default=[], help="YOLO Detection export(s) with drawn boxes")
+    parser.add_argument("--predicted-boxes", nargs="+", default=[],
+                        help="model boxes (e.g. for pseudo-labelled frames); they only attach to existing lines")
     parser.add_argument("--kpt-order", choices=("labelled", "left-to-right"), default="labelled")
     parser.add_argument("--fuse", action="store_true", help="also evaluate obb with direction from pose")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="training overrides")
+    parser.add_argument("--weights-file", default="best.pt", choices=("best.pt", "last.pt"),
+                        help="checkpoint to evaluate; best.pt is chosen by box/keypoint mAP, which can pick an "
+                             "early epoch whose keypoints have not spread to the probe ends yet")
     parser.add_argument("--mix", nargs=2, metavar=("AXIS_EXP", "DIRECTION_EXP"),
                         help="only evaluate OBB models of one finished experiment directed by pose models of another")
     parser.add_argument("--tta", action="store_true", help="with --mix: flip test-time augmentation for the direction")
@@ -119,12 +124,12 @@ def main():
     for fold in args.only_folds if args.only_folds else range(args.folds):
         fold_dir = data_root / f"fold{fold}"
         build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, kpt_order=args.kpt_order,
-              box_dirs=args.boxes)
+              box_dirs=args.boxes, predicted_box_dirs=args.predicted_boxes)
         if args.extra_train:
             extra, kept = filtered_extra(args.extra_train, fold_dir / "pose", data_root / f"extra{fold}")
             print(f"fold {fold}: {kept} extra training frames")
             build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, extra_train=[extra],
-                  kpt_order=args.kpt_order, box_dirs=args.boxes)
+                  kpt_order=args.kpt_order, box_dirs=args.boxes, predicted_box_dirs=args.predicted_boxes)
         weights = {}
         for config in args.configs:
             task = task_of(config)
@@ -133,7 +138,7 @@ def main():
             model = train(f"configs/{config}.yaml", {**overrides, "name": run, "exist_ok": True,
                                                      "project": str(Path("runs/cv").resolve()), "plots": False},
                           data=data)
-            weights[config] = Path(model.trainer.save_dir) / "weights" / "best.pt"
+            weights[config] = Path(model.trainer.save_dir) / "weights" / args.weights_file
             evaluate(weights[config], data, f"{config}_f{fold}", gt_dir=fold_dir / "pose",
                      out_dir=results_root, fps=False)
         if args.fuse and "obb" in weights and "pose" in weights:

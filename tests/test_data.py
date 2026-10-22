@@ -196,3 +196,13 @@ def test_attach_boxes_gives_each_line_its_drawn_box():
     assert attach_boxes(images, anns, boxes) == 1
     assert line["bbox"] == pytest.approx([5, 5, 30, 10])
     assert len(anns["f"]) == 2 and "keypoints" not in anns["f"][1]
+
+
+def test_predicted_boxes_do_not_add_probes():
+    from erc_pose.data.build_dataset import attach_boxes
+
+    images = {"f": {"width": 100, "height": 100}}
+    anns = {"f": [{"bbox": [10, 10, 20, 0], "keypoints": [10, 10, 2, 30, 10, 2]}]}
+    boxes = {"f": [[0.2, 0.1, 0.3, 0.1], [0.8, 0.8, 0.1, 0.1]]}
+    assert attach_boxes(images, anns, boxes, add_unmatched=False) == 1
+    assert len(anns["f"]) == 1

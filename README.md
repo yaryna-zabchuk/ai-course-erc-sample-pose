@@ -217,6 +217,30 @@ python -m erc_pose.data.build_dataset --yolo-pose data/raw/semi_supervised_fixed
     --boxes data/raw/box_labels_task2660063 --out data/processed_boxes
 ```
 
+### Best keypoint model
+
+Order-free loss + drawn boxes + pseudo-labels (boxes for the pseudo-labelled
+frames come from a detector trained on the drawn boxes, `--predicted-boxes`),
+trained for all 100 epochs and evaluated at the last epoch. 5-fold CV:
+
+| pose model, order-free | axis error | axis ≤5° | recall |
+|---|---|---|---|
+| drawn boxes | 4.7° ± 1.1 | 66% | 0.94 |
+| drawn boxes + pseudo-labels, `best.pt` | 6.1° ± 3.7 | 62% | 0.94 |
+| **drawn boxes + pseudo-labels, last epoch** | **3.9° ± 1.4** | **78%** | **0.92** |
+
+Ultralytics' `best.pt` is picked by box/keypoint mAP, which barely notices
+keypoints that still sit near the middle of the probe; with early stopping it
+kept epoch 26 in one fold (13° error). `configs/pose_sym.yaml` therefore trains
+without early stopping, and the pose model to use is `weights/last.pt`.
+
+```bash
+python -m erc_pose.data.build_dataset --yolo-pose data/raw/semi_supervised_fixed \
+    --boxes data/raw/box_labels_task2660063 --predicted-boxes data/cvat_prelabels_box \
+    --extra-train data/pseudo --out data/processed_pose_best
+python -m erc_pose.train configs/pose_sym.yaml --data data/processed_pose_best/pose/data.yaml --set name=pose_best
+```
+
 ### If the direction is needed later
 
 A pose model can add the top/bottom direction to the OBB axis

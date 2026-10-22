@@ -1,11 +1,12 @@
 # Pose model with an order-free keypoint loss: the two probe ends are interchangeable.
 model: yolov8n-pose.pt
 data: data/processed/pose/data.yaml
-noise_aug: true
-symmetric_keypoints: true   # see erc_pose/symmetric.py   # extra Albumentations noise / exposure / blur, see erc_pose/train.py
+noise_aug: true   # extra Albumentations noise / exposure / blur, see erc_pose/train.py
+symmetric_keypoints: true   # see erc_pose/symmetric.py
 train:
   epochs: 100
-  patience: 30
+  patience: 100     # no early stopping: use weights/last.pt. best.pt is picked by box/keypoint mAP, which can
+                    # choose an early epoch whose keypoints still sit near the probe's middle (5-fold CV: 6.1° -> 3.9°)
   imgsz: 960        # probes are 16-160 px long in 960x600 frames; do not downscale
   batch: 16
   seed: 0
