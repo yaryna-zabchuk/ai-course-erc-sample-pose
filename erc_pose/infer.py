@@ -1,6 +1,6 @@
 """Run a model on images, video or a camera; prints one JSON line per frame.
 
-    python -m erc_pose.infer --weights runs/obb_semi/weights/best.pt --source /dev/arducam-mast --show
+    python -m erc_pose.infer --weights models/pose.pt --source /dev/arducam-mast --show
 """
 
 import argparse

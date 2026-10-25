@@ -13,7 +13,21 @@ pip install -e ".[dev]"
 pytest
 ```
 
-The trained model is in the repo: `models/pose.pt`.
+## Models
+
+All three are YOLOv8n at 960 px, trained on the same 735 frames and tested on the
+same split (110 frames, 153 probes). Weights are in `models/`.
+
+| model | what it does | config | weights | test results |
+|---|---|---|---|---|
+| baseline | box detection, no augmentation | `configs/baseline.yaml` | `models/baseline.pt` | mAP50 0.82, recall 0.81, precision 0.84 |
+| box detector | box detection, with augmentation | `configs/detect.yaml` | `models/detect.pt` | mAP50 0.88, recall 0.90, precision 0.80 |
+| **pose (main)** | box + two points per probe → axis angle | `configs/pose_sym.yaml` | `models/pose.pt` | **axis error 3.2° (median 2.3°), 82% within 5°**, mAP50 0.92, recall 0.91, precision 0.83 |
+
+Only the pose model gives the angle; the other two only find the probes. All run
+in real time: 160-185 FPS on an RTX 4050 laptop GPU, 15-20 FPS on CPU.
+`configs/experiments/` holds configs from earlier experiments that are not used
+for these models.
 
 ## Run it
 
@@ -68,8 +82,13 @@ apart), never by frame, since neighbouring frames are near-duplicates:
 ## Train
 
 ```bash
-python -m erc_pose.train configs/pose_sym.yaml --data data/processed_all/pose/data.yaml --set name=pose_all
+python -m erc_pose.train configs/baseline.yaml --data data/processed_all/detect/data.yaml --set name=baseline
+python -m erc_pose.train configs/detect.yaml --data data/processed_all/detect/data.yaml --set name=detect
+python -m erc_pose.train configs/pose_sym.yaml --data data/processed_all/pose/data.yaml --set name=pose
 ```
+
+`scripts/run_all.sh` does the whole thing: builds the dataset, trains the three
+models and evaluates them.
 
 `configs/pose_sym.yaml` uses a keypoint loss that ignores which end of the
 probe comes first (`erc_pose/symmetric.py`), trains all 100 epochs and the
@@ -92,13 +111,9 @@ axis error in degrees (mean, median, share within 5°) and FPS on GPU and CPU.
 
 ## Results
 
-Test split of the 735 frames (110 frames, 153 probes):
-
-| | axis error, mean / median | within 5° | recall | precision | FPS GPU / CPU |
-|---|---|---|---|---|---|
-| `models/pose.pt` | 3.2° / 2.3° | 82% | 0.91 | 0.83 | 184 / 20 |
-
-GPU: RTX 4050 laptop, CPU: 20 threads, 960 px, one frame at a time.
+The main numbers are in the table under [Models](#models). For box models
+`evaluate` needs the box labels as ground truth: add `--gt data/processed_all/detect`.
+Speed is measured one frame at a time at 960 px (GPU: RTX 4050 laptop, CPU: 20 threads).
 
 How the pose model got there (5-fold cross-validation on the first 141 frames):
 
@@ -109,8 +124,7 @@ How the pose model got there (5-fold cross-validation on the first 141 frames):
 | + drawn boxes | 4.7° ± 1.1 | 66% |
 | + pseudo-labels, last epoch | 3.9° ± 1.4 | 78% |
 
-Box baseline (YOLOv8n detection, no augmentation): mAP50 0.53, recall 0.39 on
-the first 141 frames. On the test frames that neither model saw in training,
+On the test frames that neither model saw in training,
 the model trained on all 735 frames beats the earlier one: 2.9° vs 4.0° axis
 error, recall 0.88 vs 0.80.
 

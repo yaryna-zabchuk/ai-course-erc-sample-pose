@@ -20,8 +20,9 @@ from erc_pose.train import train
 
 
 def task_of(config):
-    """Dataset task of a config name: pose_sym -> pose, obb_s -> obb, baseline -> detect."""
-    return next((task for task in ("pose", "obb") if config.startswith(task)), "detect")
+    """Dataset task of a config name or path: pose_sym -> pose, obb_s -> obb, baseline -> detect."""
+    name = Path(config).stem
+    return next((task for task in ("pose", "obb") if name.startswith(task)), "detect")
 
 
 def filtered_extra(extra_dir, fold_dataset, out_dir, gap_s=DEFAULT_SESSION_GAP_S):
@@ -127,12 +128,14 @@ def main():
         for config in args.configs:
             task = task_of(config)
             data = fold_dir / task / "data.yaml"
-            run = f"{args.name}_{config}_f{fold}"
-            model = train(f"configs/{config}.yaml", {**overrides, "name": run, "exist_ok": True,
+            stem = Path(config).stem
+            run = f"{args.name}_{stem}_f{fold}"
+            config_path = Path(config) if config.endswith(".yaml") else Path("configs") / f"{config}.yaml"
+            model = train(config_path, {**overrides, "name": run, "exist_ok": True,
                                                      "project": str(Path("runs/cv").resolve()), "plots": False},
                           data=data)
-            weights[config] = Path(model.trainer.save_dir) / "weights" / args.weights_file
-            evaluate(weights[config], data, f"{config}_f{fold}", gt_dir=fold_dir / "pose",
+            weights[stem] = Path(model.trainer.save_dir) / "weights" / args.weights_file
+            evaluate(weights[stem], data, f"{stem}_f{fold}", gt_dir=fold_dir / "pose",
                      out_dir=results_root, fps=False)
         if args.fuse and "obb" in weights and "pose" in weights:
             evaluate(weights["obb"], fold_dir / "obb" / "data.yaml", f"obb+pose_f{fold}", gt_dir=fold_dir / "pose",

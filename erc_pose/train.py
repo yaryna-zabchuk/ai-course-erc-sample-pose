@@ -1,7 +1,7 @@
 """Train a detection, pose or OBB model from a config file.
 
-    python -m erc_pose.train configs/pose.yaml
-    python -m erc_pose.train configs/pose.yaml --set epochs=5 device=cpu
+    python -m erc_pose.train configs/pose_sym.yaml --data data/processed_all/pose/data.yaml
+    python -m erc_pose.train configs/pose_sym.yaml --set epochs=5 device=cpu
 """
 
 import argparse

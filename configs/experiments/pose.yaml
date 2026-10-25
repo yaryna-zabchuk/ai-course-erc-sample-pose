@@ -1,4 +1,4 @@
-# pose, two keypoints per probe
+# pose with the standard keypoint loss (angle baseline)
 model: yolov8n-pose.pt
 data: data/processed/pose/data.yaml
 noise_aug: true
