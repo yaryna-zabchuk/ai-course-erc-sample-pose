@@ -15,7 +15,7 @@ pytest
 
 ## Models
 
-All three are YOLOv8n at 960 px, trained on the same 735 frames and tested on the
+All four are YOLOv8n at 960 px, trained on the same 735 frames and tested on the
 same split (110 frames, 153 probes). Weights are in `models/`.
 
 | model | what it does | config | weights | test results |
@@ -23,11 +23,30 @@ same split (110 frames, 153 probes). Weights are in `models/`.
 | baseline | box detection, no augmentation | `configs/baseline.yaml` | `models/baseline.pt` | mAP50 0.82, recall 0.81, precision 0.84 |
 | box detector | box detection, with augmentation | `configs/detect.yaml` | `models/detect.pt` | mAP50 0.88, recall 0.90, precision 0.80 |
 | **pose (main)** | box + two points per probe → axis angle | `configs/pose_sym.yaml` | `models/pose.pt` | **axis error 3.2° (median 2.3°), 82% within 5°**, mAP50 0.92, recall 0.91, precision 0.83 |
+| OBB (alternative) | rotated box per probe → axis angle | `configs/obb.yaml` | `models/obb.pt` | **axis error 2.1° (median 1.5°), 91% within 5°**, recall 0.85, precision 0.90 |
 
-Only the pose model gives the angle; the other two only find the probes. All run
-in real time: 160-185 FPS on an RTX 4050 laptop GPU, 15-20 FPS on CPU.
-`configs/experiments/` holds configs from earlier experiments that are not used
-for these models.
+The pose and OBB models give the angle; the baseline and the box detector only
+find the probes. All run in real time: 160-185 FPS on an RTX 4050 laptop GPU,
+15-20 FPS on CPU. `configs/experiments/` holds configs from earlier experiments
+that are not used for these models.
+
+### OBB
+
+The proposal planned YOLOv8-OBB as the alternative to keypoints. An oriented
+bounding box is a rectangle rotated to lie along the probe, and the probe's axis
+is its long side. Nobody draws OBBs: each label line is turned into a thin
+rotated rectangle (width 0.18 × length) when the dataset is built, and the
+predicted box is turned back into a line for scoring, so both models are judged
+against the same labelled lines.
+
+On the test split OBB gets the angle more precisely than the pose model (2.1° vs
+3.2°, 91% vs 82% within 5°) but finds fewer probes (recall 0.85 vs 0.91). Its
+mAP is left out of the table because its label boxes differ from those of the
+other models. The drawn boxes do not help OBB: their widths vary a lot (0.13-0.51
+of the length) and a loose box around a short probe makes the rotated rectangle
+almost square, so OBB is trained on the generated boxes only. Pose stays the
+main model, as planned in the proposal; OBB is the more accurate option when
+only the angle matters.
 
 ## Run it
 
@@ -85,10 +104,16 @@ apart), never by frame, since neighbouring frames are near-duplicates:
 python -m erc_pose.train configs/baseline.yaml --data data/processed_all/detect/data.yaml --set name=baseline
 python -m erc_pose.train configs/detect.yaml --data data/processed_all/detect/data.yaml --set name=detect
 python -m erc_pose.train configs/pose_sym.yaml --data data/processed_all/pose/data.yaml --set name=pose
+
+# OBB uses the generated boxes only: same build without --boxes
+python -m erc_pose.data.build_dataset \
+    --yolo-pose data/raw/erc-sample-pose/semi_supervised_dataset path/to/task_2686785_export \
+    --images data/raw/erc-sample-pose/data --min-line-px 3 --out data/processed_all_est
+python -m erc_pose.train configs/obb.yaml --data data/processed_all_est/obb/data.yaml --set name=obb
 ```
 
-`scripts/run_all.sh` does the whole thing: builds the dataset, trains the three
-models and evaluates them.
+`scripts/run_all.sh` builds the dataset, trains the baseline, box detector and
+pose model and evaluates them.
 
 `configs/pose_sym.yaml` uses a keypoint loss that ignores which end of the
 probe comes first (`erc_pose/symmetric.py`), trains all 100 epochs and the
@@ -101,6 +126,7 @@ it inflates the boxes of thin objects.
 
 ```bash
 python -m erc_pose.evaluate --weights models/pose.pt --data data/processed_all/pose/data.yaml --name pose
+python -m erc_pose.evaluate --weights models/obb.pt --data data/processed_all_est/obb/data.yaml --name obb
 python -m erc_pose.benchmark --weights models/pose.pt --images data/processed_all/pose/images/test
 python -m erc_pose.report results
 ```
