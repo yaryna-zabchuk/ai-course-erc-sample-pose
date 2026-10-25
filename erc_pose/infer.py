@@ -14,24 +14,26 @@ import numpy as np
 
 from erc_pose.benchmark import train_imgsz
 from erc_pose.direction import apply_direction, load_direction_model
+from erc_pose.orientation import wrap_angle
 from erc_pose.predict import probes_from_result
 
 
-def draw(image, probes):
-    """Draw boxes and orientation arrows on a copy of the image."""
+def draw(image, probes, arrows=False):
+    """Draw boxes and axis lines on a copy of the image; arrows only when the direction is known."""
     image = image.copy()
     for probe in probes:
         x1, y1, x2, y2 = (int(round(v)) for v in probe.xyxy)
         cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 255), 2)
         label = f"{probe.conf:.2f}"
         if probe.angle_deg is not None:
-            label += f" {probe.angle_deg:.0f}deg"
+            shown = probe.angle_deg if arrows else float(wrap_angle(probe.angle_deg, 180))
+            label += f" {shown:.0f}deg"
             centre = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
             half = np.hypot(x2 - x1, y2 - y1) / 2 * np.array(
                 [np.cos(np.radians(probe.angle_deg)), np.sin(np.radians(probe.angle_deg))])
             start, end = (probe.kpts[0], probe.kpts[1]) if probe.kpts is not None else (centre - half, centre + half)
             start, end = tuple(int(v) for v in start), tuple(int(v) for v in end)
-            if probe.directed:
+            if arrows and probe.directed:
                 cv2.arrowedLine(image, start, end, (0, 0, 255), 2, cv2.LINE_AA, tipLength=0.15)
             else:
                 cv2.line(image, start, end, (0, 0, 255), 2, cv2.LINE_AA)
@@ -122,7 +124,7 @@ def main():
             # session prefix keeps one run in one split
             cv2.imwrite(str(raw_dir / f"live{session}_{index:06d}.jpg"), result.orig_img)
         if save_dir or args.show:
-            image = draw(result.orig_img, probes)
+            image = draw(result.orig_img, probes, arrows=direction_model is not None)
             if save_dir and (probes or not args.save_detections_only):
                 cv2.imwrite(str(save_dir / f"{index:06d}.jpg"), image)
             if args.show:
