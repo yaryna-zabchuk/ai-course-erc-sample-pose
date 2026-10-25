@@ -4,11 +4,7 @@ import numpy as np
 
 
 def probe_width(p1, p2, bbox_wh, min_ratio=0.05, min_px=2.0):
-    """Estimate the probe's width from its axis and its axis-aligned box.
-
-    A rectangle of length L and width w rotated by theta has an axis-aligned
-    box of (L|cos| + w|sin|, L|sin| + w|cos|), so bw + bh = (L + w)(|cos| + |sin|).
-    """
+    """Probe width from its axis and axis-aligned box: bw + bh = (L + w)(|cos| + |sin|)."""
     v = np.asarray(p2, dtype=float) - np.asarray(p1, dtype=float)
     length = float(np.hypot(*v))
     if length == 0:
@@ -19,10 +15,7 @@ def probe_width(p1, p2, bbox_wh, min_ratio=0.05, min_px=2.0):
 
 
 def obb_from_keypoints(p1, p2, bbox_wh=None, width=None):
-    """Four corners (4, 2) of the oriented box whose long axis runs p1 -> p2.
-
-    The width is given, or else estimated from the axis-aligned box size.
-    """
+    """Corners (4, 2) of the oriented box along p1 -> p2."""
     p1, p2 = np.asarray(p1, dtype=float), np.asarray(p2, dtype=float)
     v = p2 - p1
     length = float(np.hypot(*v))
@@ -41,11 +34,7 @@ def xywh_to_corners(bbox):
 
 
 def is_keypoint_extent(bbox, p1, p2, tol=1.0):
-    """True when an (x, y, w, h) box is only the extent of the two keypoints.
-
-    That is the case when a probe is annotated as its axis (a two-point
-    skeleton in CVAT): the exported box is the extent of the line.
-    """
+    """True if the box is just the extent of the two keypoints."""
     lo = np.minimum(p1, p2)
     hi = np.maximum(p1, p2)
     x, y, w, h = bbox

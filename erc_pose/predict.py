@@ -12,11 +12,11 @@ from erc_pose.orientation import angle_from_keypoints, angle_from_xywhr, angular
 class Probe:
     xyxy: np.ndarray            # axis-aligned box in pixels
     conf: float
-    kpts: np.ndarray | None     # (2, 2) top and bottom; for OBB the axis ends, in no particular order
+    kpts: np.ndarray | None     # (2, 2); for obb the axis ends
     angle_deg: float | None     # None for plain detection models
     directed: bool              # False when the angle is only known modulo 180
-    agreement_deg: float | None = None  # fused probes: angle between the OBB axis and the pose direction
-    direction_conf: float | None = None  # classifier-directed probes: confidence of the direction, 0..1
+    agreement_deg: float | None = None  # fused: obb axis vs pose direction
+    direction_conf: float | None = None  # classifier confidence, 0..1
 
     def to_message(self):
         """Compact dict for the operator link."""
@@ -57,13 +57,7 @@ def probes_from_result(result):
 
 
 def fuse_direction(axis_probes, direction_probes, iou_thr=0.3):
-    """Take the axis from an OBB model and the direction (which end is top) from a pose model.
-
-    An OBB angle is only known modulo 180; it is turned by 180 degrees when the
-    overlapping pose detections point the other way. Every pose detection with
-    IoU >= iou_thr votes with its confidence (several come from test-time
-    augmentation). Probes without a pose match stay undirected.
-    """
+    """Axis from the OBB, direction from overlapping pose detections."""
     directed = [p for p in direction_probes if p.directed]
     if not axis_probes or not directed:
         return list(axis_probes)

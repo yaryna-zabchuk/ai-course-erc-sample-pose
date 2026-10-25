@@ -1,9 +1,6 @@
-"""Extract frames from rover recordings, skipping near-duplicates.
+"""Extract frames from videos, skipping near-duplicates.
 
     python -m erc_pose.data.extract_frames recordings/*.mp4 --out data/raw/frames
-
-Frames are named `<video>_<frame index>.jpg`, which is what the split script
-uses to keep one recording inside one split.
 """
 
 import argparse

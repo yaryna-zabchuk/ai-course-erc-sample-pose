@@ -1,14 +1,6 @@
-"""Convert CVAT / Roboflow annotations to YOLO datasets.
-
-Input is a COCO Keypoints JSON or an Ultralytics YOLO Pose export (boxes + 2
-keypoints per probe; keypoint 0 = top, keypoint 1 = bottom).
-
-One annotation source produces up to three datasets that share the same
-split: `detect` (boxes), `pose` (boxes + 2 keypoints) and `obb` (oriented
-boxes derived from the keypoints). Without keypoints only `detect` is built.
+"""Build YOLO detect / pose / obb datasets from CVAT exports.
 
     python -m erc_pose.data.build_dataset --yolo-pose data/raw/cvat_export --out data/processed
-    python -m erc_pose.data.build_dataset --coco data/raw/annotations.json --out data/processed
 """
 
 import argparse
@@ -26,12 +18,9 @@ from erc_pose.data.split import DEFAULT_GROUP_REGEX, DEFAULT_SESSION_GAP_S, SPLI
 
 CLASS_NAMES = {0: "probe"}
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}
-# probe width / length, used where the box has to be rebuilt from the keypoints
+# assumed probe width / length
 DEFAULT_WIDTH_RATIO = 0.18
-# OKS sigma per keypoint, used by both the pose loss and pose mAP. 0.5 is the
-# Ultralytics default for a 2-point skeleton. Smaller values were tried and are
-# worse: the loss 1 - exp(-e) saturates on small probes and stops giving a
-# gradient (0.15 and 0.05 both gave worse keypoints and angles on the test split).
+# OKS sigma per keypoint; smaller values made the loss saturate on small probes
 DEFAULT_KPT_SIGMA = 0.5
 KEYPOINT_NAMES = ("top", "bottom")
 
@@ -51,7 +40,7 @@ def _keypoints(ann):
 def order_left_to_right(kpts):
     """Put the left end first (the upper end for a vertical probe), whatever the label said."""
     (x1, y1), (x2, y2) = kpts[0, :2], kpts[1, :2]
-    return kpts[::-1].copy() if (x2, y2) < (x1, y1) else kpts  # angle then lies in (-90, 90]
+    return kpts[::-1].copy() if (x2, y2) < (x1, y1) else kpts  # angle in (-90, 90]
 
 
 def label_lines(anns, width, height, kpt_order="labelled"):
@@ -111,11 +100,7 @@ def load_coco(coco_path, images_dir=None):
 
 
 def load_yolo_pose(export_dir, images_dir=None):
-    """Same as load_coco, for an Ultralytics YOLO Pose export (CVAT "Ultralytics YOLO Pose 1.0").
-
-    Labels are `cls cx cy w h x1 y1 [v1] x2 y2 [v2]`, normalised. The export's own
-    subsets are ignored, since build() re-splits by recording session.
-    """
+    """Same as load_coco, for an Ultralytics YOLO Pose export."""
     from PIL import Image
 
     export_dir = Path(export_dir)
@@ -151,10 +136,7 @@ def load_yolo_pose(export_dir, images_dir=None):
 
 
 def repair_line_boxes(anns_by_image, width_ratio):
-    """Give axis-line labels (box = extent of the two keypoints) a box with an area to train on.
-
-    Returns the count.
-    """
+    """Wrap line-only labels in a thin box; returns how many."""
     repaired = 0
     for anns in anns_by_image.values():
         for ann in anns:
@@ -179,14 +161,7 @@ def load_box_labels(export_dir):
 
 
 def attach_boxes(images, anns_by_image, boxes, add_unmatched=True):
-    """Give each axis-line annotation the drawn box around it.
-
-    A line belongs to the smallest box that contains both of its ends (3 px of
-    slack), otherwise to the box whose centre is nearest the line's midpoint.
-    Drawn boxes without a line are added as box-only annotations. Returns the
-    number of lines that got a drawn box. Predicted boxes should not add
-    probes of their own, so pass add_unmatched=False for them.
-    """
+    """Attach drawn boxes to the axis lines inside them; returns how many."""
     attached = 0
     for stem, normalised in boxes.items():
         if stem not in images:
@@ -221,14 +196,7 @@ def build(coco_paths=(), out_dir="data/processed", images_dir=None, ratios=(0.70
           group_regex=DEFAULT_GROUP_REGEX, copy=False, yolo_dirs=(), width_ratio=DEFAULT_WIDTH_RATIO,
           session_gap=DEFAULT_SESSION_GAP_S, extra_train=(), kpt_sigma=DEFAULT_KPT_SIGMA, fold=None, folds=5,
           kpt_order="labelled", box_dirs=(), predicted_box_dirs=()):
-    """Build the datasets and return {task: path to its data.yaml}.
-
-    `extra_train` YOLO Pose folders (e.g. pseudo-labels) go into the train split
-    only and do not change how the other images are split. `box_dirs` are YOLO
-    Detection exports with drawn boxes for the same images; each axis line gets
-    the box around it instead of an estimated one, and the OBB width comes from it.
-    `predicted_box_dirs` do the same with model boxes, which only attach to lines.
-    """
+    """Build the datasets, returns {task: data.yaml path}."""
     out_dir = Path(out_dir)
     images, anns_by_image = {}, defaultdict(list)
     sources = [load_coco(path, images_dir) for path in coco_paths]
@@ -282,12 +250,12 @@ def build(coco_paths=(), out_dir="data/processed", images_dir=None, ratios=(0.70
 
     yamls = {}
     for task in tasks:
-        # no `path` key: train.py passes an absolute yaml path and the dataset root defaults to its folder
+        # no path key: the dataset root is the yaml's folder
         config = {split: f"images/{split}" for split in SPLITS}
         config["names"] = CLASS_NAMES
         if task == "pose":
             config["kpt_shape"] = [len(KEYPOINT_NAMES), 3]
-            config["flip_idx"] = list(range(len(KEYPOINT_NAMES)))  # top/bottom do not swap under a flip
+            config["flip_idx"] = list(range(len(KEYPOINT_NAMES)))  # top/bottom don't swap on flip
             config["kpt_oks_sigmas"] = [kpt_sigma] * len(KEYPOINT_NAMES)
         yamls[task] = out_dir / task / "data.yaml"
         yamls[task].write_text(yaml.safe_dump(config, sort_keys=False))

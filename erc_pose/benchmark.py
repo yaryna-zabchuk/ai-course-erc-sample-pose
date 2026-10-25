@@ -17,10 +17,7 @@ def list_images(folder):
 
 
 def measure_fps(model, images, device, imgsz=640, warmup=5, max_images=100, direction_model=None, tta=False):
-    """End-to-end FPS (pre-process + inference + post-process), one image at a time.
-
-    With `direction_model`, the time includes giving the OBB probes their direction.
-    """
+    """End-to-end FPS, one image at a time."""
     from erc_pose.direction import apply_direction
     from erc_pose.predict import probes_from_result
 

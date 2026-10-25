@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Full pipeline on the Hugging Face data: fix label directions, build the datasets, train the
-# baseline / detect / pose / OBB models, pseudo-label the unlabelled frames, retrain OBB with them,
-# evaluate everything on the test split and print the comparison table.
-#   scripts/run_all.sh [YOLO Pose export] [folder with unlabelled frames]
+# whole pipeline: fix labels, build data, train, pseudo-label, retrain obb, evaluate
+# usage: scripts/run_all.sh [pose export] [unlabelled frames]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
@@ -31,10 +29,10 @@ $PY -m erc_pose.train configs/obb.yaml --data data/processed_semi/obb/data.yaml 
     --set name=obb_semi exist_ok=true > logs/train_obb_semi.log 2>&1
 
 echo "== evaluation"
-# the deliverable: the semi-supervised OBB alone (axis only)
+# main model: obb with pseudo-labels
 $PY -m erc_pose.evaluate --weights runs/obb_semi/weights/best.pt --data data/processed/obb/data.yaml \
     --name obb_semi > logs/eval_obb_semi.log 2>&1
-# optional: OBB gives the axis, the pose model (human labels only) the direction
+# optional: direction from the pose model
 $PY -m erc_pose.evaluate --weights runs/obb/weights/best.pt --data data/processed/obb/data.yaml \
     --direction-weights runs/pose/weights/best.pt --name obb+pose > logs/eval_obb+pose.log 2>&1
 $PY -m erc_pose.evaluate --weights runs/obb_semi/weights/best.pt --data data/processed/obb/data.yaml \

@@ -1,18 +1,7 @@
-"""Pre-label unlabelled frames for correction in CVAT.
-
-Every detection above `--conf` becomes a two-point axis label, so annotators
-only fix and confirm instead of drawing. With an OBB model the points are the
-ends of the box's long axis; with a pose model they are its two keypoints.
-Frames that are already labelled are skipped. The result is a zip in the
-Ultralytics YOLO Pose layout, which CVAT imports as "Ultralytics YOLO Pose 1.0";
-with a detection model the boxes are written as "Ultralytics YOLO Detection 1.0".
+"""Pre-label frames with a trained model and pack them for CVAT.
 
     python -m erc_pose.data.prelabel --weights runs/obb_semi/weights/best.pt \
-        --images data/raw/erc-sample-pose/data --labelled data/raw/erc-sample-pose/semi_supervised_dataset \
-        --out data/cvat_prelabels_obb
-    python -m erc_pose.data.prelabel --weights runs/pose_sym_semi/weights/best.pt \
-        --images data/raw/erc-sample-pose/data --labelled data/raw/erc-sample-pose/semi_supervised_dataset \
-        --out data/cvat_prelabels_pose
+        --images data/raw/erc-sample-pose/data --out data/cvat_prelabels_obb
 """
 
 import argparse
@@ -26,17 +15,13 @@ from erc_pose.benchmark import IMAGE_SUFFIXES, train_imgsz
 from erc_pose.predict import probes_from_result
 
 
-# label names in the team's CVAT task (class 0 of a YOLO Pose export is the skeleton)
+# label names in our CVAT task
 POSE_NAMES = ["sample_pose"]
 BOX_NAMES = ["sample_box", "sample_pose"]
 
 
 def prelabel(weights, image_dirs, labelled_dirs, out_dir, conf=0.25, with_images=True, names=None):
-    """Write pre-labels as a CVAT-importable zip.
-
-    OBB and pose models give two-point axis labels (Ultralytics YOLO Pose 1.0);
-    a detection model gives boxes (Ultralytics YOLO Detection 1.0).
-    """
+    """Write pre-labels as a zip CVAT can import."""
     from ultralytics import YOLO
 
     model = YOLO(weights)
@@ -66,7 +51,7 @@ def prelabel(weights, image_dirs, labelled_dirs, out_dir, conf=0.25, with_images
                 continue
             points = np.clip(probe.kpts / [width, height], 0, 1)
             (x1, y1), (x2, y2) = points.min(0), points.max(0)
-            box = [(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1]  # extent of the line, as CVAT exports it
+            box = [(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1]  # line extent, like CVAT exports
             lines.append("0 " + " ".join(f"{v:.6f}" for v in box)
                          + f" {points[0, 0]:.6f} {points[0, 1]:.6f} 2 {points[1, 0]:.6f} {points[1, 1]:.6f} 2")
         n_probes += len(lines)

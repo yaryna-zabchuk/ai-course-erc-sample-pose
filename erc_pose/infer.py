@@ -1,10 +1,6 @@
-"""Run a trained model on images, a video or a camera and print compact detections.
-
-One JSON line per frame is all that has to go over the radio link:
+"""Run a model on images, video or a camera; prints one JSON line per frame.
 
     python -m erc_pose.infer --weights runs/obb_semi/weights/best.pt --source /dev/arducam-mast --show
-    python -m erc_pose.infer --weights runs/obb_semi/weights/best.pt --source 0 --show
-    python -m erc_pose.infer --weights runs/obb_semi/weights/best.pt --source frames/ --save out/
 """
 
 import argparse
@@ -107,7 +103,7 @@ def main():
     model = YOLO(args.weights)
     direction_model = load_direction_model(args.direction_weights) if args.direction_weights else None
     imgsz = args.imgsz or train_imgsz(model)
-    if is_camera:  # own reader: Ultralytics' stream loader cannot set the resolution or open /dev paths
+    if is_camera:  # ultralytics' loader can't set resolution or open /dev paths
         results = (model.predict(frame, conf=args.conf, imgsz=imgsz, device=args.device, verbose=False)[0]
                    for frame in camera_frames(source, args.width, args.height, args.rotate))
     else:
@@ -123,7 +119,7 @@ def main():
                                      args.direction_tta)
         print(json.dumps({"frame": index, "probes": [p.to_message() for p in probes]}), flush=True)
         if raw_dir and index % args.raw_every == 0 and (probes or not args.save_detections_only):
-            # <session>_<frame> names keep one run together when the dataset is split by recording
+            # session prefix keeps one run in one split
             cv2.imwrite(str(raw_dir / f"live{session}_{index:06d}.jpg"), result.orig_img)
         if save_dir or args.show:
             image = draw(result.orig_img, probes)

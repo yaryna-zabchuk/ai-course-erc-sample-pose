@@ -1,22 +1,20 @@
-# Pose model with an order-free keypoint loss: the two probe ends are interchangeable.
+# pose with order-free keypoint loss
 model: yolov8n-pose.pt
 data: data/processed/pose/data.yaml
-noise_aug: true   # extra Albumentations noise / exposure / blur, see erc_pose/train.py
-symmetric_keypoints: true   # see erc_pose/symmetric.py
+noise_aug: true
+symmetric_keypoints: true
 train:
   epochs: 100
-  patience: 100     # no early stopping: use weights/last.pt. best.pt is picked by box/keypoint mAP, which can
-                    # choose an early epoch whose keypoints still sit near the probe's middle (5-fold CV: 6.1° -> 3.9°)
-  imgsz: 960        # probes are 16-160 px long in 960x600 frames; do not downscale
+  patience: 100     # no early stopping, use last.pt (best.pt can be an early epoch)
+  imgsz: 960        # native frame width, probes are small
   batch: 16
   seed: 0
-  # augmentation (Ultralytics built-ins)
   hsv_h: 0.015
   hsv_s: 0.7
-  hsv_v: 0.5        # lighting changes on the Mars Yard
-  degrees: 0        # rotation inflates axis-aligned boxes of thin objects; flips cover orientation
+  hsv_v: 0.5
+  degrees: 0        # rotation inflates boxes of thin objects
   translate: 0.1
-  scale: 0.5        # 0.3-2 m working distance
+  scale: 0.5
   fliplr: 0.5
   flipud: 0.5
   mosaic: 1.0

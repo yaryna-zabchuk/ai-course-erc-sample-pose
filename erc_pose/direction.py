@@ -1,13 +1,6 @@
-"""Which end of a probe is the top: a small classifier on axis-aligned crops.
-
-Each probe is cut out along its axis into a square crop with one end on the
-left. The classifier says whether the top (thick end) is on the left or on
-the right. Every labelled probe gives two training crops, as-is and mirrored.
+"""Top/bottom classifier on axis-aligned probe crops.
 
     python -m erc_pose.direction build --dataset data/processed/pose --out data/direction
-    python -m erc_pose.train configs/direction.yaml
-    python -m erc_pose.evaluate --weights runs/obb/weights/best.pt --data data/processed/obb/data.yaml \
-        --direction-weights runs/direction/weights/best.pt --name obb+direction
 """
 
 import argparse
@@ -22,7 +15,7 @@ from erc_pose.data.split import SPLITS
 from erc_pose.orientation import wrap_angle
 
 CROP_SIZE = 64
-LEFT, RIGHT = "top_left", "top_right"  # class names, sorted: index 0 = top_left
+LEFT, RIGHT = "top_left", "top_right"  # index 0 = top_left
 
 
 def canonical_crop(image, start, end, size=CROP_SIZE, margin=0.15):
@@ -105,11 +98,7 @@ def load_direction_model(weights):
 
 
 def apply_direction(model, image, probes, conf=0.25, device=None, tta=False):
-    """Direct OBB probes with `model`, a pose model or a direction classifier.
-
-    With `tta`, a pose model also looks at the horizontally, vertically and
-    doubly flipped image and all its detections vote on the direction.
-    """
+    """Give OBB probes a direction using a pose model or the classifier."""
     from erc_pose.benchmark import train_imgsz
     from erc_pose.predict import fuse_direction, probes_from_result, unflip
 

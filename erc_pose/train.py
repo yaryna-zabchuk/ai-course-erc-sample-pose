@@ -11,11 +11,7 @@ import yaml
 
 
 def noise_augmentations():
-    """Pixel-level Albumentations transforms: sensor noise, exposure and blur.
-
-    Only pixel-level transforms belong here, because Ultralytics does not pass
-    keypoints or oriented boxes through Albumentations.
-    """
+    """Extra pixel-level augmentations (noise, exposure, blur)."""
     import albumentations as A
 
     return [

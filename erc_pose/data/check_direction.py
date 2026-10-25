@@ -1,10 +1,4 @@
-"""Find probes whose top/bottom keypoints were swapped by the annotator.
-
-The probe has a thick cylindrical body and a thin pointed tip; keypoint 0
-(`top`) belongs on the thick end. The green width of the probe near each end
-tells them apart. Labels that are clearly the other way round are listed,
-and with `--out` a copy of the YOLO Pose export is written with them swapped.
-Short probes and unclear width profiles are left alone and listed as unsure.
+"""Find labels with swapped top/bottom points (top is the thick end).
 
     python -m erc_pose.data.check_direction data/raw/erc-sample-pose/semi_supervised_dataset \
         --out data/raw/semi_supervised_fixed

@@ -1,9 +1,4 @@
-"""Orientation of a probe in the image plane.
-
-Angles are in degrees, measured from the +x image axis towards +y (image y
-points down), in the range (-180, 180]. Keypoint 0 is the top base of the
-cylinder and keypoint 1 the bottom base, so the vector points top -> bottom.
-"""
+"""Probe angles in the image plane, degrees in (-180, 180], x right, y down."""
 
 import numpy as np
 
@@ -29,20 +24,12 @@ def angle_from_keypoints(p1, p2):
 
 
 def angular_error(pred, gt, period=360.0):
-    """Absolute circular difference in degrees.
-
-    period=360 treats the probe as directed (top and bottom are told apart);
-    period=180 treats it as an undirected axis, which is all an oriented
-    bounding box can express.
-    """
+    """Absolute circular difference; period=180 for an undirected axis."""
     return np.abs(wrap_angle(np.asarray(pred, dtype=float) - np.asarray(gt, dtype=float), period))
 
 
 def angle_from_xywhr(xywhr):
-    """Long-axis angle of oriented boxes (..., 5) as (cx, cy, w, h, r[rad]).
-
-    The result is an undirected axis angle in (-90, 90].
-    """
+    """Long-axis angle of (cx, cy, w, h, r) boxes, in (-90, 90]."""
     xywhr = np.asarray(xywhr, dtype=float)
     w, h, r = xywhr[..., 2], xywhr[..., 3], xywhr[..., 4]
     return wrap_angle(np.degrees(r) + np.where(w >= h, 0.0, 90.0), period=180.0)

@@ -19,10 +19,7 @@ def box_iou(a, b):
 
 
 def match_boxes(pred_boxes, pred_conf, gt_boxes, iou_thr=0.5):
-    """Greedy one-to-one matching, highest confidence first.
-
-    Returns a list of (pred_index, gt_index) pairs.
-    """
+    """Greedy one-to-one matching by confidence, returns (pred, gt) pairs."""
     iou = box_iou(pred_boxes, gt_boxes)
     matches, taken = [], set()
     for p in np.argsort(-np.asarray(pred_conf, dtype=float)):

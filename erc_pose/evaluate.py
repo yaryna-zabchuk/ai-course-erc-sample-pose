@@ -1,6 +1,4 @@
-"""Evaluate a trained model on one split and store the numbers as JSON.
-
-Reports the Ultralytics mAP values plus keypoint MAE, angle error and FPS.
+"""Evaluate a model on one split: mAP, keypoint error, angle error, FPS.
 
     python -m erc_pose.evaluate --weights runs/pose/weights/best.pt --data data/processed/pose/data.yaml --name pose
 """
@@ -39,10 +37,7 @@ def read_ground_truth(label_path, width, height):
 
 
 def orientation_metrics(model, gt_dir, split, device, imgsz=640, conf=0.25, direction_model=None, tta=False):
-    """Match predictions to ground truth and compute recall, keypoint MAE and angle error.
-
-    With `direction_model` (a pose model or a direction classifier), OBB angles get their direction from it.
-    """
+    """Recall, keypoint MAE and angle errors against the labels."""
     n_gt = n_pred = n_matched = 0
     pred_kpts, gt_kpts, pred_angles, gt_angles, dir_pred, dir_gt = [], [], [], [], [], []
     images = list_images(Path(gt_dir) / "images" / split)
@@ -60,9 +55,9 @@ def orientation_metrics(model, gt_dir, split, device, imgsz=640, conf=0.25, dire
         n_matched += len(matches)
         for p, g in matches:
             probe = probes[p]
-            if not (gt_k[g, :, 2] > 0).all():  # also false for NaN, i.e. no keypoint labels
+            if not (gt_k[g, :, 2] > 0).all():  # NaN = no keypoint labels
                 continue
-            if probe.kpts is not None and probe.directed:  # undirected axis ends have no top/bottom order
+            if probe.kpts is not None and probe.directed:  # undirected ends have no order
                 pred_kpts.append(probe.kpts)
                 gt_kpts.append(gt_k[g, :, :2])
             if probe.angle_deg is not None:
@@ -80,11 +75,11 @@ def orientation_metrics(model, gt_dir, split, device, imgsz=640, conf=0.25, dire
         "precision": n_matched / n_pred if n_pred else float("nan"),
         "kpt_mae_px": keypoint_mae(pred_kpts, gt_kpts),
     }
-    # the axis error (mod 180) is comparable between pose and obb models
+    # axis error (mod 180) works for both pose and obb
     axis = angle_stats(pred_angles, gt_angles, 180.0, ANGLE_TOLERANCE_DEG)
     out.update(angle_axis_mae_deg=axis["mae_deg"], angle_axis_median_deg=axis["median_deg"],
                angle_axis_within_5deg=axis["within_tol"])
-    if dir_pred:  # full 360-degree error, over the probes whose direction is known
+    if dir_pred:  # 360° error, directed probes only
         full = angle_stats(dir_pred, dir_gt, 360.0, ANGLE_TOLERANCE_DEG)
         out.update(angle_mae_deg=full["mae_deg"], angle_median_deg=full["median_deg"],
                    angle_within_5deg=full["within_tol"], directed_share=len(dir_pred) / len(pred_angles),
@@ -97,7 +92,7 @@ def evaluate(weights, data, name, split="test", gt_dir=None, device=None, imgsz=
     from ultralytics import YOLO
 
     data = Path(data).resolve()
-    if gt_dir is None:  # the pose dataset holds boxes and keypoints for the same images
+    if gt_dir is None:  # pose dataset has both boxes and keypoints
         pose_dir = data.parent.parent / "pose"
         gt_dir = pose_dir if pose_dir.exists() else data.parent
     model = YOLO(weights)

@@ -1,8 +1,4 @@
-"""Reproducible train/val/test split that keeps a recording session together.
-
-Consecutive frames of one recording are near-duplicates, so splitting them
-at random leaks the test set into training.
-"""
+"""Train/val/test split by recording session."""
 
 import random
 import re
@@ -15,7 +11,7 @@ SPLITS = ("train", "val", "test")
 # Roboflow renames "frame_0001.jpg" to "frame_0001_jpg.rf.<hash>.jpg".
 _ROBOFLOW_SUFFIX = re.compile(r"(_(jpe?g|png|bmp))?\.rf\.[0-9a-zA-Z]+$")
 DEFAULT_GROUP_REGEX = r"^(.*?)[_-]?\d+$"
-# "<camera>_<YYYYMMDD-HHMMSS-mmm>", as written by the rover's capture script
+# <camera>_<YYYYMMDD-HHMMSS-mmm>
 _TIMESTAMPED = re.compile(r"^(?P<source>.+)_(?P<time>\d{8}-\d{6}-\d{3})$")
 DEFAULT_SESSION_GAP_S = 60.0
 
@@ -29,10 +25,7 @@ def frame_time(stem):
 
 
 def time_sessions(stems, gap_s=DEFAULT_SESSION_GAP_S):
-    """Group timestamped frames: same source, less than gap_s seconds apart.
-
-    Returns {stem: session name} for the stems that carry a timestamp.
-    """
+    """{stem: session} for timestamped frames, split on gaps of gap_s seconds."""
     by_source = defaultdict(list)
     for stem in stems:
         parsed = frame_time(stem)
@@ -59,12 +52,7 @@ def group_key(stem, pattern=DEFAULT_GROUP_REGEX):
 
 def split_groups(stems, ratios=(0.70, 0.15, 0.15), seed=0, pattern=DEFAULT_GROUP_REGEX,
                  session_gap=DEFAULT_SESSION_GAP_S, fold=None, folds=5):
-    """Assign every stem to a split. Returns {stem: split_name}.
-
-    Timestamped frames are grouped by time_sessions(), the rest by group_key().
-    With `fold` set, the sessions are dealt into `folds` equal parts instead:
-    part `fold` is the test split, the next part the val split and the rest train.
-    """
+    """{stem: split}; with fold set, fold is test and the next one val."""
     sessions = time_sessions(stems, session_gap)
     groups = defaultdict(list)
     for stem in sorted(stems):
@@ -78,7 +66,7 @@ def split_groups(stems, ratios=(0.70, 0.15, 0.15), seed=0, pattern=DEFAULT_GROUP
 
     names = sorted(groups)
     random.Random(seed).shuffle(names)
-    names.sort(key=lambda name: -len(groups[name]))  # stable: ties keep the shuffled order
+    names.sort(key=lambda name: -len(groups[name]))  # stable sort keeps shuffled ties
     total = sum(len(members) for members in groups.values())
 
     if fold is None:
@@ -93,7 +81,7 @@ def split_groups(stems, ratios=(0.70, 0.15, 0.15), seed=0, pattern=DEFAULT_GROUP
     counts = [0] * len(bins)
     assignment = {}
     for name in names:
-        # the bin that is furthest below its target takes the next session
+        # fill the bin furthest below its target
         i = max(range(len(bins)), key=lambda k: bins[k] - counts[k])
         counts[i] += len(groups[name])
         for stem in groups[name]:

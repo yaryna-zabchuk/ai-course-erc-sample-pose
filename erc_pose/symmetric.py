@@ -1,11 +1,4 @@
-"""Order-free keypoint loss: the two probe ends are interchangeable.
-
-The probe's axis does not depend on which end is called the first keypoint.
-With the default loss the model is punished for predicting the ends the other
-way round, so when the labels disagree about which end comes first it learns
-to put both points near the middle. This loss compares each prediction with
-both orderings of its label and keeps the smaller error.
-"""
+"""Keypoint loss that does not care which probe end comes first."""
 
 import torch
 
@@ -20,7 +13,7 @@ def symmetric_keypoint_loss(sigmas):
                 e = d / ((2 * self.sigmas).pow(2) * (area + 1e-9) * 2)  # as KeypointLoss (from cocoeval)
                 return ((1 - torch.exp(-e)) * mask).sum(1) / (mask.sum(1) + 1e-9)
 
-            # same scale as KeypointLoss: mean over objects of (sum over visible points / visible points)
+            # same scale as KeypointLoss
             straight = per_object(gt_kpts, kpt_mask)
             swapped = per_object(gt_kpts.flip(1), kpt_mask.flip(1))
             return torch.minimum(straight, swapped).mean()

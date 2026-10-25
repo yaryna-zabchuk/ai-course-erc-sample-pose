@@ -1,15 +1,7 @@
-"""Pseudo-label unlabelled frames with a trained pose model (semi-supervised step).
-
-Only confident frames are kept: a frame with any detection between `--low`
-and `--high` is skipped; detections above `--high` become labels, and a frame
-with nothing above `--low` becomes a background image. Frames recorded close
-in time to a val/test frame are skipped so that pseudo-labels cannot leak the
-evaluation sets into training.
-The output is a YOLO Pose folder for `build_dataset --extra-train`.
+"""Pseudo-label unlabelled frames, keeping only confident ones.
 
     python -m erc_pose.data.pseudo_label --weights runs/pose/weights/best.pt \
-        --obb-weights runs/obb/weights/best.pt \
-        --images data/raw/erc-sample-pose/data --dataset data/processed/pose --out data/pseudo
+        --obb-weights runs/obb/weights/best.pt --images data/raw/erc-sample-pose/data --out data/pseudo
 """
 
 import argparse
@@ -45,12 +37,7 @@ def is_near_held_out(stem, times, gap_s):
 
 def pseudo_label(weights, image_dirs, dataset_dir, out_dir, high=0.6, low=0.1,
                  gap_s=DEFAULT_SESSION_GAP_S, device=None, obb_weights=None, max_disagreement=20.0):
-    """Write confident predictions as YOLO Pose labels.
-
-    With `obb_weights` the keypoints are the OBB's axis ends ordered by the pose
-    model, and a probe only counts as confident when the pose direction agrees
-    with the OBB axis to within `max_disagreement` degrees.
-    """
+    """Write confident predictions as YOLO Pose labels."""
     from ultralytics import YOLO
 
     pose = YOLO(weights)
@@ -88,7 +75,7 @@ def pseudo_label(weights, image_dirs, dataset_dir, out_dir, high=0.6, low=0.1,
         height, width = result.orig_shape
         lines = []
         for probe in probes:
-            # written as a keypoint-extent box, which build_dataset rebuilds like the human labels
+            # line-extent box, build_dataset widens it later
             (x1, y1), (x2, y2) = probe.kpts.min(0), probe.kpts.max(0)
             box = [(x1 + x2) / 2 / width, (y1 + y2) / 2 / height, (x2 - x1) / width, (y2 - y1) / height]
             points = np.clip(probe.kpts / [width, height], 0, 1).ravel()

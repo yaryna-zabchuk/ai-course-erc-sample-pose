@@ -1,7 +1,4 @@
-"""Generate synthetic probe images with COCO-keypoints annotations.
-
-Green cylinders with a dark top cap on a noisy reddish background. Useful for
-smoke-testing the pipeline and as extra training data (Plan B in the proposal).
+"""Synthetic probe images with COCO keypoint labels.
 
     python -m erc_pose.data.synthetic --out data/synthetic --count 300
 """

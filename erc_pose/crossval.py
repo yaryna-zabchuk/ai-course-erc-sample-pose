@@ -1,13 +1,6 @@
 """K-fold cross-validation over recording sessions.
 
-The test split has only ~20 human-labelled probes, so single-split numbers
-move by several points from one run to the next. Here every session is the
-test split once and the metrics are averaged over the folds.
-
-    python -m erc_pose.crossval --export data/raw/semi_supervised_fixed --configs pose obb --fuse --name base
-    python -m erc_pose.crossval --export data/raw/semi_supervised_fixed --configs pose obb --fuse --name semi \
-        --extra-train data/pseudo
-    python -m erc_pose.crossval --name mixed --mix semi base   # semi OBB directed by base pose
+    python -m erc_pose.crossval --export data/raw/semi_supervised_fixed --configs pose obb --name base
 """
 
 import argparse
