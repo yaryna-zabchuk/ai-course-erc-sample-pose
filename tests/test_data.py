@@ -206,3 +206,25 @@ def test_predicted_boxes_do_not_add_probes():
     boxes = {"f": [[0.2, 0.1, 0.3, 0.1], [0.8, 0.8, 0.1, 0.1]]}
     assert attach_boxes(images, anns, boxes, add_unmatched=False) == 1
     assert len(anns["f"]) == 1
+
+
+def test_drop_short_lines():
+    from erc_pose.data.build_dataset import drop_short_lines
+
+    anns = {"f": [{"bbox": [0, 0, 1, 1], "keypoints": [10, 10, 2, 11, 10, 2]},
+                  {"bbox": [0, 0, 40, 1], "keypoints": [10, 10, 2, 50, 10, 2]}]}
+    assert drop_short_lines(anns, 3) == 1 and len(anns["f"]) == 1
+
+
+def test_yolo_pose_export_keeps_frames_without_labels(tmp_path):
+    import cv2
+    from erc_pose.data.build_dataset import load_yolo_pose
+
+    (tmp_path / "images").mkdir()
+    (tmp_path / "labels").mkdir()
+    for stem in ("a", "b"):
+        cv2.imwrite(str(tmp_path / "images" / f"{stem}.jpg"), np.zeros((20, 30, 3), np.uint8))
+    (tmp_path / "labels" / "a.txt").write_text("0 0.5 0.5 0.2 0.2 0.4 0.5 2 0.6 0.5 2\n")
+    (tmp_path / "train.txt").write_text("images/a.jpg\nimages/b.jpg\n")
+    images, anns = load_yolo_pose(tmp_path)
+    assert set(images) == {"a", "b"} and len(anns["a"]) == 1 and not anns["b"]

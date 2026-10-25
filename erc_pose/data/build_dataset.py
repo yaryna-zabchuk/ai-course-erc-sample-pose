@@ -132,6 +132,22 @@ def load_yolo_pose(export_dir, images_dir=None):
                 ann["keypoints"] = [v for (x, y), visible in zip(kpts[:, :2], vis)
                                     for v in (x * width, y * height, visible)]
             anns[label.stem].append(ann)
+
+    # frames without probes have no label file; take them from the export's image lists
+    listed = {Path(line.strip()).stem for txt in export_dir.glob("*.txt") for line in txt.read_text().splitlines()
+              if line.strip()}
+    if not listed and (export_dir / "images").exists():
+        listed = {p.stem for p in (export_dir / "images").rglob("*") if p.suffix.lower() in IMAGE_SUFFIXES}
+    missing = 0
+    for stem in sorted(listed - images.keys()):
+        if stem not in found:
+            missing += 1
+            continue
+        with Image.open(found[stem]) as image:
+            width, height = image.size
+        images[stem] = {"path": found[stem], "width": width, "height": height}
+    if missing:
+        print(f"{missing} listed frame(s) without labels and without an image were skipped")
     return images, anns
 
 
@@ -192,10 +208,25 @@ def attach_boxes(images, anns_by_image, boxes, add_unmatched=True):
     return attached
 
 
+def drop_short_lines(anns_by_image, min_px):
+    """Remove line labels shorter than min_px; returns how many."""
+    dropped = 0
+    for stem, anns in anns_by_image.items():
+        keep = []
+        for ann in anns:
+            kpts = _keypoints(ann)
+            if kpts is not None and (kpts[:, 2] > 0).all() and np.hypot(*(kpts[1, :2] - kpts[0, :2])) < min_px:
+                dropped += 1
+                continue
+            keep.append(ann)
+        anns_by_image[stem] = keep
+    return dropped
+
+
 def build(coco_paths=(), out_dir="data/processed", images_dir=None, ratios=(0.70, 0.15, 0.15), seed=0,
           group_regex=DEFAULT_GROUP_REGEX, copy=False, yolo_dirs=(), width_ratio=DEFAULT_WIDTH_RATIO,
           session_gap=DEFAULT_SESSION_GAP_S, extra_train=(), kpt_sigma=DEFAULT_KPT_SIGMA, fold=None, folds=5,
-          kpt_order="labelled", box_dirs=(), predicted_box_dirs=()):
+          kpt_order="labelled", box_dirs=(), predicted_box_dirs=(), min_line_px=0.0):
     """Build the datasets, returns {task: data.yaml path}."""
     out_dir = Path(out_dir)
     images, anns_by_image = {}, defaultdict(list)
@@ -210,6 +241,10 @@ def build(coco_paths=(), out_dir="data/processed", images_dir=None, ratios=(0.70
             raise ValueError(f"duplicate image name: {sorted(duplicates)[0]}")
         images.update(source_images)
         anns_by_image.update(source_anns)
+    if min_line_px > 0:
+        dropped = drop_short_lines(anns_by_image, min_line_px)
+        if dropped:
+            print(f"dropped {dropped} line(s) shorter than {min_line_px} px")
     for box_dir in box_dirs:
         attached = attach_boxes(images, anns_by_image, load_box_labels(box_dir))
         print(f"{attached} axis label(s) got a drawn box from {box_dir}")
@@ -279,6 +314,7 @@ def main():
                         help="YOLO Detection export(s) with drawn boxes for the same images")
     parser.add_argument("--predicted-boxes", nargs="+", default=[],
                         help="YOLO Detection folder(s) of model boxes; they only attach to existing lines")
+    parser.add_argument("--min-line-px", type=float, default=0.0, help="drop line labels shorter than this")
     parser.add_argument("--images", help="image folder (default: next to the annotations)")
     parser.add_argument("--out", default="data/processed")
     parser.add_argument("--ratios", nargs=3, type=float, default=(0.70, 0.15, 0.15))
@@ -302,7 +338,7 @@ def main():
     build(args.coco, args.out, args.images, tuple(args.ratios), args.seed, args.group_regex, args.copy,
           args.yolo_pose, args.width_ratio, args.session_gap, args.extra_train,
           args.kpt_sigma, args.fold, args.folds, args.kpt_order, args.boxes,
-          args.predicted_boxes)
+          args.predicted_boxes, args.min_line_px)
 
 
 if __name__ == "__main__":
