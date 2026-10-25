@@ -226,3 +226,5 @@ __marimo__/
 *.pt
 *.zip
 
+!models/*.pt
+!models/experiments/*.pt
