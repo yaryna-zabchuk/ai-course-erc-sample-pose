@@ -1,0 +1,26 @@
+[project]
+name = "erc-pose"
+version = "0.1.0"
+description = "Vision-based detection and pose estimation of ERC probes"
+requires-python = ">=3.10"
+dependencies = [
+    "ultralytics>=8.4",
+    "albumentations>=1.4",
+    "opencv-python",
+    "numpy",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["erc_pose*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,17 @@
+# top/bottom classifier on probe crops
+model: yolov8n-cls.pt
+data: data/direction
+noise_aug: false
+train:
+  epochs: 60
+  patience: 20
+  imgsz: 64
+  batch: 64
+  seed: 0
+  fliplr: 0.0       # would swap the classes
+  flipud: 0.5
+  hsv_v: 0.5
+  hsv_s: 0.5
+  erasing: 0.0
+  auto_augment: null
+  scale: 0.1        # keep both ends in the crop

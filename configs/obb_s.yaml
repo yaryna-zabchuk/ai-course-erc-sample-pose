@@ -1,0 +1,20 @@
+# obb, yolov8s
+model: yolov8s-obb.pt
+data: data/processed/obb/data.yaml
+noise_aug: true
+train:
+  epochs: 100
+  patience: 30
+  imgsz: 960        # native frame width, probes are small
+  batch: 16
+  seed: 0
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.5
+  degrees: 180
+  translate: 0.1
+  scale: 0.5
+  fliplr: 0.5
+  flipud: 0.5
+  mosaic: 1.0
+  close_mosaic: 10

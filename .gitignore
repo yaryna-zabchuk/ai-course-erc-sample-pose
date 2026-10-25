@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ERC probe project: data, weights and experiment outputs stay out of git
+/data/
+/runs/
+/results/
+/logs/
+/weights/
+*.pt
+*.zip
+
