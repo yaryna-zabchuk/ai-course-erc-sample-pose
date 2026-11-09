@@ -8,12 +8,13 @@ torch = pytest.importorskip("torch")
 from erc_pose.predict import probes_from_result  # noqa: E402
 
 
-def _result(boxes, conf, kpts=None, obb=None):
+def _result(boxes, conf, kpts=None, obb=None, masks=None):
     return SimpleNamespace(
         boxes=SimpleNamespace(xyxy=torch.tensor(boxes, dtype=torch.float32).reshape(-1, 4),
                               conf=torch.tensor(conf, dtype=torch.float32)),
         keypoints=None if kpts is None else SimpleNamespace(xy=torch.tensor(kpts, dtype=torch.float32)),
         obb=obb,
+        masks=None if masks is None else SimpleNamespace(xy=masks),
     )
 
 
@@ -68,3 +69,12 @@ def test_fuse_direction_votes_by_confidence():
     obb = [Probe(box, 0.9, None, 0.0, False)]
     votes = [Probe(box, 0.9, None, 175.0, True), Probe(box, 0.3, None, 5.0, True), Probe(box, 0.3, None, 0.0, True)]
     assert fuse_direction(obb, votes)[0].angle_deg == pytest.approx(180)
+
+
+def test_seg_result_gives_axis_from_mask():
+    from erc_pose.predict import probes_from_result
+
+    outline = np.array([[100, 95], [180, 135], [175, 145], [95, 105]], dtype=np.float32)  # thin bar at ~26.6°
+    probes = probes_from_result(_result([[95, 95, 180, 145]], [0.9], masks=[outline]))
+    assert len(probes) == 1 and not probes[0].directed
+    assert probes[0].angle_deg % 180 == pytest.approx(26.6, abs=0.5)

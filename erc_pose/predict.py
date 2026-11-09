@@ -35,6 +35,16 @@ def axis_ends(xywhr, angle_deg):
     return np.stack([xywhr[:2] - half, xywhr[:2] + half])
 
 
+def mask_axis(polygon):
+    """Ends (2, 2) of the long side of the smallest rotated rectangle around a mask outline."""
+    import cv2
+
+    if len(polygon) < 3:
+        return None
+    (cx, cy), (w, h), angle = cv2.minAreaRect(np.asarray(polygon, dtype=np.float32))
+    return axis_ends([cx, cy, w, h], angle if w >= h else angle + 90)
+
+
 def probes_from_result(result):
     """List of Probe for one image, for detect, pose and obb models alike."""
     if result.obb is not None:
@@ -49,6 +59,10 @@ def probes_from_result(result):
     confs = result.boxes.conf.cpu().numpy()
     if not len(boxes):
         return []
+    if result.masks is not None:
+        ends = [mask_axis(polygon) for polygon in result.masks.xy]
+        return [Probe(b, float(c), e, float(angle_from_keypoints(e[0], e[1])) if e is not None else None, False)
+                for b, c, e in zip(boxes, confs, ends)]
     if result.keypoints is None:
         return [Probe(b, float(c), None, None, False) for b, c in zip(boxes, confs)]
     kpts = result.keypoints.xy.cpu().numpy().reshape(len(boxes), -1, 2)

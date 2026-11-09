@@ -38,16 +38,26 @@ def read_ground_truth(label_path, width, height):
 
 def orientation_metrics(model, gt_dir, split, device, imgsz=640, conf=0.25, direction_model=None, tta=False):
     """Recall, keypoint MAE and angle errors against the labels."""
-    n_gt = n_pred = n_matched = 0
-    pred_kpts, gt_kpts, pred_angles, gt_angles, dir_pred, dir_gt = [], [], [], [], [], []
-    images = list_images(Path(gt_dir) / "images" / split)
-    for image in images:
+    def predict(image):
         result = model.predict(str(image), device=device, imgsz=imgsz, conf=conf, verbose=False)[0]
-        height, width = result.orig_shape
-        gt_boxes, gt_k = read_ground_truth(Path(gt_dir) / "labels" / split / f"{image.stem}.txt", width, height)
         probes = probes_from_result(result)
         if direction_model is not None:
             probes = apply_direction(direction_model, result.orig_img, probes, conf, device, tta)
+        return probes, result.orig_shape
+
+    return score_predictions(predict, gt_dir, split)
+
+
+def score_predictions(predict, gt_dir, split, max_images=None, seed=0):
+    """Metrics for any predictor: predict(image_path) -> (list of Probe, (height, width))."""
+    n_gt = n_pred = n_matched = 0
+    pred_kpts, gt_kpts, pred_angles, gt_angles, dir_pred, dir_gt = [], [], [], [], [], []
+    images = list_images(Path(gt_dir) / "images" / split)
+    if max_images and len(images) > max_images:
+        images = [images[i] for i in sorted(np.random.default_rng(seed).choice(len(images), max_images, False))]
+    for image in images:
+        probes, (height, width) = predict(image)
+        gt_boxes, gt_k = read_ground_truth(Path(gt_dir) / "labels" / split / f"{image.stem}.txt", width, height)
         n_gt, n_pred = n_gt + len(gt_boxes), n_pred + len(probes)
         if not probes or not len(gt_boxes):
             continue
@@ -71,6 +81,8 @@ def orientation_metrics(model, gt_dir, split, device, imgsz=640, conf=0.25, dire
     out = {
         "n_images": len(images),
         "n_gt": n_gt,
+        "n_pred": n_pred,
+        "n_matched": n_matched,
         "recall": n_matched / n_gt if n_gt else float("nan"),
         "precision": n_matched / n_pred if n_pred else float("nan"),
         "kpt_mae_px": keypoint_mae(pred_kpts, gt_kpts),

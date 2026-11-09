@@ -157,6 +157,83 @@ error, recall 0.88 vs 0.80.
 Known weak spots: very close probes (the thin tip gets cut off), probes under
 ~15 px, and occasional false hits on lens glare and screens.
 
+## Model comparison with close-up frames
+
+294 more frames (PNG, 960×600) from the front-bottom and arm cameras, with the
+probe close to the camera: median probe length 146 px against about 40 px in the
+first 735 frames. 273 have one probe, 21 have none. They are split by session on
+their own (`data/raw/closeup_20261108/split.txt`, 201 / 47 / 46 frames, both
+cameras in every split) and added to the split of the first 735 frames, which
+stays as it was:
+
+```bash
+python -m erc_pose.data.build_dataset --yolo-pose path/to/closeup_export --min-line-px 3 \
+    --out data/processed_closeup
+python scripts/add_closeup.py data/processed_all data/processed_closeup \
+    data/raw/closeup_20261108/split.txt data/processed_v2
+python scripts/add_closeup.py data/processed_all_est data/processed_closeup \
+    data/raw/closeup_20261108/split.txt data/processed_v2_est
+scripts/run_v2.sh        # trains and evaluates every model below
+python -m erc_pose.report results/v2 --parts
+```
+
+Test: 156 frames, 194 probes; "old" is the 153 probes of the earlier test split,
+"close-up" the 41 new ones. All models are trained on the same 716 frames.
+
+| model | params | recall | precision | axis error (median) | ≤5° | close-up axis error | FPS GPU / CPU |
+|---|---|---|---|---|---|---|---|
+| classic CV: green threshold + rotated rectangle, no learning | – | 0.53 | 0.83 | 2.5° (1.9°) | 89% | 1.7° | – / 661 |
+| classic CV: line segments (LSD) on green pixels, no learning | – | 0.46 | 0.80 | 4.0° (2.8°) | 77% | 4.4° | – / 21 |
+| baseline: YOLOv8n detect, no augmentation | 3.1M | 0.89 | 0.86 | – | – | – | 173 / 16 |
+| YOLOv8n detect | 3.1M | 0.91 | 0.86 | – | – | – | 172 / 16 |
+| **YOLOv8n-pose (main)** | 3.1M | 0.88 | 0.85 | **2.2° (1.3°)** | 88% | 1.7° | 181 / 15 |
+| YOLO11n-pose | 2.7M | 0.88 | 0.86 | 2.6° (2.0°) | 87% | 1.9° | 183 / 18 |
+| YOLO11s-pose | 9.7M | 0.93 | 0.87 | 2.7° (1.6°) | 87% | 2.4° | 87 / 6 |
+| **YOLOv8n-OBB** | 3.1M | 0.89 | 0.86 | **2.1° (1.4°)** | 91% | 1.5° | 173 / 16 |
+| YOLO11n-OBB | 2.7M | 0.88 | 0.90 | 2.1° (1.5°) | 91% | 1.7° | 176 / 17 |
+| YOLOv8n-seg, angle from the mask | 3.4M | 0.91 | 0.82 | 3.2° (2.2°) | 85% | 2.2° | 136 / 11 |
+| YOLO11n-seg | 2.9M | 0.91 | 0.83 | 3.5° (2.4°) | 83% | 2.3° | 142 / 13 |
+| Keypoint R-CNN (ResNet-50 FPN) | 59M | 0.91 | 0.60 | 3.8° (1.6°) | 88% | 6.7° | 11 / 1 |
+
+For comparison, the models trained without the close-ups on the same test:
+pose 3.2° (2.3°), 82% within 5°, close-up 3.3°; OBB 2.1° (1.5°), 92%, close-up 1.9°.
+
+- The close-ups cut the pose model's error from 3.2° to 2.2° (1.7° on close
+  probes). Recall on the old frames fell from 0.91 to 0.86; the missed probes
+  are found, but in a few sunlit frames of one session the box stops before the
+  thin tip, and IoU drops just under 0.5.
+- OBB and pose are now about level on the angle; OBB is still slightly ahead.
+- YOLO11 is not better than YOLOv8 here. The bigger YOLO11s finds the most
+  probes (recall 0.93) but runs at half the speed.
+- Segmentation finds probes well but the angle from the mask is less precise.
+- Keypoint R-CNN is 19× bigger and 16× slower with more false hits; its angle
+  has large outliers on close probes (heatmap resolution, and the left-to-right
+  point order flips for near-vertical probes).
+- The classic baseline gets the angle right when it finds a probe, but misses
+  half of them (small, shaded or partly hidden probes) and has no notion of
+  what is a probe beyond colour and shape.
+
+Each row is one training run on one test split (~200 probes), so differences of
+a few tenths of a degree are noise. Cross-validation over recording sessions on
+all 1029 frames (3 of 5 folds, `scripts/run_cv_v2.sh`) settles pose vs OBB:
+
+| | axis error | within 5° | recall | mAP50 |
+|---|---|---|---|---|
+| YOLOv8n-pose | 2.41° ± 0.19 | 91% | 0.945 ± 0.009 | 0.95 |
+| YOLOv8n-OBB | 1.61° ± 0.02 | 95% | 0.934 ± 0.017 | 0.95 |
+
+OBB gives the more precise axis; the gap is several times the spread over folds.
+
+Not finished yet: a U-Net that segments probe pixels (`erc_pose/semseg.py`, axis
+from PCA of each blob) and a two-stage model, YOLO boxes + a ResNet18 that
+predicts the axis of each crop (`erc_pose/twostage.py`). Both are trained and
+evaluated by `scripts/run_v2_extra.sh`.
+
+Classic baseline: `python -m erc_pose.classic --gt data/processed_v2/pose --name classic_v2`
+(tunes its thresholds on train + val). Keypoint R-CNN: `python -m erc_pose.rcnn train` /
+`evaluate` (torchvision; points ordered left to right, since it has no
+order-free loss).
+
 ## Pre-labelling new frames
 
 ```bash

@@ -86,7 +86,9 @@ def mix(axis_name, direction_name, folds, name, tta=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--export", help="YOLO Pose export with the human labels")
+    parser.add_argument("--export", nargs="+", help="YOLO Pose export(s) with the human labels")
+    parser.add_argument("--images", help="image folder for exports without images")
+    parser.add_argument("--min-line-px", type=float, default=0.0, help="drop line labels shorter than this")
     parser.add_argument("--configs", nargs="+", default=["pose", "obb"])
     parser.add_argument("--name", required=True, help="experiment name")
     parser.add_argument("--folds", type=int, default=5)
@@ -117,13 +119,14 @@ def main():
     data_root, results_root = Path("data/cv") / args.name, Path("results/cv") / args.name
     for fold in args.only_folds if args.only_folds else range(args.folds):
         fold_dir = data_root / f"fold{fold}"
-        build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, kpt_order=args.kpt_order,
-              box_dirs=args.boxes, predicted_box_dirs=args.predicted_boxes)
+        source = dict(yolo_dirs=args.export, images_dir=args.images, min_line_px=args.min_line_px)
+        build(out_dir=fold_dir, fold=fold, folds=args.folds, kpt_order=args.kpt_order,
+              box_dirs=args.boxes, predicted_box_dirs=args.predicted_boxes, **source)
         if args.extra_train:
             extra, kept = filtered_extra(args.extra_train, fold_dir / "pose", data_root / f"extra{fold}")
             print(f"fold {fold}: {kept} extra training frames")
-            build(yolo_dirs=[args.export], out_dir=fold_dir, fold=fold, folds=args.folds, extra_train=[extra],
-                  kpt_order=args.kpt_order, box_dirs=args.boxes, predicted_box_dirs=args.predicted_boxes)
+            build(out_dir=fold_dir, fold=fold, folds=args.folds, extra_train=[extra],
+                  kpt_order=args.kpt_order, box_dirs=args.boxes, predicted_box_dirs=args.predicted_boxes, **source)
         weights = {}
         for config in args.configs:
             task = task_of(config)
