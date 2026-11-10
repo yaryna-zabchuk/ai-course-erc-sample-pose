@@ -227,3 +227,7 @@ __marimo__/
 *.zip
 
 !models/*.pt
+
+# too big for GitHub (230 MB)
+models/rcnn_v2.pt
+/field/

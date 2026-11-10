@@ -50,22 +50,42 @@ only the angle matters.
 
 ## Run it
 
+Every model of the comparison runs through the same command; `python -m erc_pose.models`
+lists them (`pose`, `obb`, `pose11`, `pose11s`, `obb11`, `seg`, `seg11`, `detect`,
+`baseline`, `rcnn`, `unet`, `twostage`, `classic`, `lines`) and whether their weights are there.
+
 ```bash
 # folder of photos or a video, annotated frames saved to out/
-python -m erc_pose.infer --weights models/pose.pt --source path/to/photos --save out
+python -m erc_pose.infer --model pose --source path/to/photos --save out
 
 # webcam (Esc or q to quit)
-python -m erc_pose.infer --weights models/pose.pt --source 0 --show
+python -m erc_pose.infer --model pose --source 0 --show
 
 # rover cameras (Linux); the front-bottom camera is mounted upside down
-python -m erc_pose.infer --weights models/pose.pt --source /dev/arducam-mast --show
-python -m erc_pose.infer --weights models/pose.pt --source /dev/arducam-front-bottom --rotate 180 --show
+python -m erc_pose.infer --model pose --source /dev/arducam-mast --show
+python -m erc_pose.infer --model obb --source /dev/arducam-front-bottom --rotate 180 --show
+
+# any Ultralytics weights work too
+python -m erc_pose.infer --weights models/pose.pt --source 0 --show
 ```
 
 Every frame prints one JSON line, e.g.
-`{"frame": 0, "probes": [{"bbox": [...], "conf": 0.85, "kpts": [...], "angle_deg": 12.3}]}`.
-Cameras are captured at 960×600, the size of the training frames. `--save-raw`
-keeps clean frames for labelling, `--conf` sets the detection threshold (0.25).
+`{"frame": 0, "model": "pose", "probes": [{"bbox": [...], "conf": 0.85, "kpts": [...], "axis_deg": 12.3, ...}]}`;
+`axis_deg` is the axis angle in (-90°, 90°]. Cameras are captured at 960×600, the
+size of the training frames. `--save-raw` keeps every 10th clean frame for
+labelling, `--conf` sets the detection threshold (0.25).
+
+### Field test
+
+```bash
+scripts/field.sh mast pose obb unet        # n / p switch model, q quits
+scripts/field.sh front pose                # front-bottom camera, rotated 180°
+python -m erc_pose.models --check path/to/frames   # load every model, measure FPS
+```
+
+`field.sh` shows the chosen models live on a rover camera (`mast`, `front`, `rear`
+or a `/dev/videoN` path) and keeps everything in `field/<time>_<camera>/`: one
+JSON line per frame, annotated frames with a probe, and every 10th clean frame.
 
 ## Data
 
@@ -194,6 +214,8 @@ Test: 156 frames, 194 probes; "old" is the 153 probes of the earlier test split,
 | YOLOv8n-seg, angle from the mask | 3.4M | 0.91 | 0.82 | 3.2° (2.2°) | 85% | 2.2° | 136 / 11 |
 | YOLO11n-seg | 2.9M | 0.91 | 0.83 | 3.5° (2.4°) | 83% | 2.3° | 142 / 13 |
 | Keypoint R-CNN (ResNet-50 FPN) | 59M | 0.91 | 0.60 | 3.8° (1.6°) | 88% | 6.7° | 11 / 1 |
+| U-Net (ResNet18 encoder), probe pixels → blobs → PCA axis | 14.4M | 0.86 | 0.87 | 2.3° (1.4°) | 90% | 1.7° | 24 / 2 |
+| two-stage: YOLOv8n detect + ResNet18 angle per crop | 14.3M | 0.91 | 0.86 | 2.5° (1.6°) | 87% | 2.4° | 117 / 14 |
 
 For comparison, the models trained without the close-ups on the same test:
 pose 3.2° (2.3°), 82% within 5°, close-up 3.3°; OBB 2.1° (1.5°), 92%, close-up 1.9°.
@@ -224,10 +246,16 @@ all 1029 frames (3 of 5 folds, `scripts/run_cv_v2.sh`) settles pose vs OBB:
 
 OBB gives the more precise axis; the gap is several times the spread over folds.
 
-Not finished yet: a U-Net that segments probe pixels (`erc_pose/semseg.py`, axis
-from PCA of each blob) and a two-stage model, YOLO boxes + a ResNet18 that
-predicts the axis of each crop (`erc_pose/twostage.py`). Both are trained and
-evaluated by `scripts/run_v2_extra.sh`.
+- The U-Net, which knows nothing about boxes, gets close to the YOLO models
+  (2.3°, 90% within 5°) but runs at 24 FPS: it labels every pixel of the full frame.
+  It can split a probe in two where the middle is in shadow.
+- The two-stage model keeps the detector's recall (0.91) and adds an angle
+  regressor that can be trained with any rotation; its angle (2.5°) does not beat
+  pose or OBB, which see the whole probe in context.
+
+U-Net and two-stage: `scripts/run_v2_extra.sh` trains and evaluates both.
+`presentation/compare_chart.py` draws axis error against speed, and
+`scripts/compare_grid.py` shows the same test frames through several models side by side.
 
 Classic baseline: `python -m erc_pose.classic --gt data/processed_v2/pose --name classic_v2`
 (tunes its thresholds on train + val). Keypoint R-CNN: `python -m erc_pose.rcnn train` /

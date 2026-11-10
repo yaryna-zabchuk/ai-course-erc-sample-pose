@@ -24,6 +24,7 @@ class Probe:
         if self.kpts is not None:
             message["kpts"] = [[round(float(x), 1), round(float(y), 1)] for x, y in self.kpts]
         if self.angle_deg is not None:
+            message["axis_deg"] = round(float(wrap_angle(self.angle_deg, 180)), 1)  # (-90, 90]: what the team uses
             message["angle_deg"] = round(self.angle_deg, 1)
             message["directed"] = self.directed
         return message

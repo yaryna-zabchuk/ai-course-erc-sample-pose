@@ -1,6 +1,10 @@
 """Run a model on images, video or a camera; prints one JSON line per frame.
 
-    python -m erc_pose.infer --weights models/pose.pt --source /dev/arducam-mast --show
+    python -m erc_pose.infer --model pose --source /dev/arducam-mast --show
+    python -m erc_pose.infer --weights models/obb.pt --source path/to/video.mp4 --save out
+
+--model takes one or more names from erc_pose.models (pose, obb, unet, rcnn, classic, ...);
+with several, n / p switch between them while --show is on.
 """
 
 import argparse
@@ -12,10 +16,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from erc_pose.benchmark import train_imgsz
+from erc_pose.benchmark import IMAGE_SUFFIXES
 from erc_pose.direction import apply_direction, load_direction_model
+from erc_pose.models import MODELS, load_predictor
 from erc_pose.orientation import wrap_angle
-from erc_pose.predict import probes_from_result
 
 
 def draw(image, probes, arrows=False):
@@ -69,11 +73,36 @@ def camera_frames(device, width=None, height=None, rotate=0):
         capture.release()
 
 
-def main():
-    from ultralytics import YOLO
+def file_frames(source):
+    """Frames of an image, a folder of images or a video file."""
+    path = Path(source)
+    if path.is_dir():
+        paths = sorted(p for p in path.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES)
+    elif path.suffix.lower() in IMAGE_SUFFIXES:
+        paths = [path]
+    else:
+        capture = cv2.VideoCapture(str(path))
+        if not capture.isOpened():
+            raise OSError(f"cannot open {source}")
+        try:
+            while True:
+                ok, frame = capture.read()
+                if not ok:
+                    return
+                yield frame
+        finally:
+            capture.release()
+    for p in paths:
+        frame = cv2.imread(str(p))
+        if frame is not None:
+            yield frame
 
+
+def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--weights", required=True)
+    which = parser.add_mutually_exclusive_group(required=True)
+    which.add_argument("--model", nargs="+", choices=list(MODELS), help="model(s) from erc_pose.models")
+    which.add_argument("--weights", help="Ultralytics weights or a spec, see erc_pose.models")
     parser.add_argument("--source", required=True, help="image, folder, video, camera index or /dev/... camera")
     parser.add_argument("--width", type=int, default=960, help="camera capture width (the training frames are 960)")
     parser.add_argument("--height", type=int, default=600, help="camera capture height (the training frames are 600)")
@@ -87,8 +116,8 @@ def main():
     parser.add_argument("--direction-tta", action="store_true", help="flip test-time augmentation for the direction")
     parser.add_argument("--save", help="folder for annotated frames")
     parser.add_argument("--save-detections-only", action="store_true", help="with --save: skip frames with no probe")
-    parser.add_argument("--save-raw", help="folder for the unannotated frames (for labelling): every --raw-every-th frame, "
-                        "only those with a probe when --save-detections-only is set")
+    parser.add_argument("--save-raw", help="folder for the unannotated frames (for labelling): every --raw-every-th "
+                        "frame, with or without a probe (missed probes are the ones worth labelling)")
     parser.add_argument("--raw-every", type=int, default=10, help="with --save-raw: keep every N-th frame")
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args()
@@ -102,37 +131,39 @@ def main():
     if raw_dir:
         raw_dir.mkdir(parents=True, exist_ok=True)
     session = time.strftime("%Y%m%d-%H%M%S")
-    model = YOLO(args.weights)
+    names = args.model or [args.weights]
+    predictors = [load_predictor(n, args.device, args.conf, args.imgsz) for n in names]
+    active = 0
     direction_model = load_direction_model(args.direction_weights) if args.direction_weights else None
-    imgsz = args.imgsz or train_imgsz(model)
-    if is_camera:  # ultralytics' loader can't set resolution or open /dev paths
-        results = (model.predict(frame, conf=args.conf, imgsz=imgsz, device=args.device, verbose=False)[0]
-                   for frame in camera_frames(source, args.width, args.height, args.rotate))
-    else:
-        results = model.predict(source, stream=True, conf=args.conf, imgsz=imgsz, device=args.device, verbose=False)
+    frames = camera_frames(source, args.width, args.height, args.rotate) if is_camera else file_frames(source)
     fps, last = None, time.perf_counter()
-    for index, result in enumerate(results):
+    for index, frame in enumerate(frames):
+        name = names[active]
+        probes = predictors[active](frame)
+        if direction_model is not None:
+            probes = apply_direction(direction_model, frame, probes, args.conf, args.device, args.direction_tta)
         now = time.perf_counter()
         fps = 1 / (now - last) if fps is None else 0.9 * fps + 0.1 / (now - last)  # smoothed
         last = now
-        probes = probes_from_result(result)
-        if direction_model is not None:
-            probes = apply_direction(direction_model, result.orig_img, probes, args.conf, args.device,
-                                     args.direction_tta)
-        print(json.dumps({"frame": index, "probes": [p.to_message() for p in probes]}), flush=True)
-        if raw_dir and index % args.raw_every == 0 and (probes or not args.save_detections_only):
+        print(json.dumps({"frame": index, "model": Path(name).stem, "probes": [p.to_message() for p in probes]}),
+              flush=True)
+        if raw_dir and index % args.raw_every == 0:
             # session prefix keeps one run in one split
-            cv2.imwrite(str(raw_dir / f"live{session}_{index:06d}.jpg"), result.orig_img)
+            cv2.imwrite(str(raw_dir / f"live{session}_{index:06d}.jpg"), frame)
         if save_dir or args.show:
-            image = draw(result.orig_img, probes, arrows=direction_model is not None)
+            image = draw(frame, probes, arrows=direction_model is not None)
             if save_dir and (probes or not args.save_detections_only):
-                cv2.imwrite(str(save_dir / f"{index:06d}.jpg"), image)
+                cv2.imwrite(str(save_dir / f"{index:06d}_{Path(name).stem}.jpg"), image)
             if args.show:
-                cv2.putText(image, f"{fps:.1f} fps  {len(probes)} probe(s)", (10, 24), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.7, (0, 255, 255), 2, cv2.LINE_AA)
+                cv2.putText(image, f"{Path(name).stem}  {fps:.1f} fps  {len(probes)} probe(s)", (10, 24),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
                 cv2.imshow("probes (Esc or q to quit)", image)
-                if cv2.waitKey(1) in (27, ord("q")):
+                key = cv2.waitKey(1)
+                if key in (27, ord("q")):
                     break
+                if key in (ord("n"), ord("p")):
+                    active = (active + (1 if key == ord("n") else -1)) % len(names)
+                    fps = None
 
 
 if __name__ == "__main__":
