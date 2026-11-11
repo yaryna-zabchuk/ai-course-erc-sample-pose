@@ -1,0 +1,10 @@
+{
+  "h_lo": 58,
+  "h_hi": 82,
+  "s_min": 140,
+  "v_min": 40,
+  "min_seg": 4,
+  "on_green": 0.8,
+  "min_len": 30,
+  "min_conf": 0.2
+}
