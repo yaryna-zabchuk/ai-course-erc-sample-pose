@@ -120,6 +120,8 @@ def main():
                         "frame, with or without a probe (missed probes are the ones worth labelling)")
     parser.add_argument("--raw-every", type=int, default=10, help="with --save-raw: keep every N-th frame")
     parser.add_argument("--show", action="store_true")
+    parser.add_argument("--tile", action="store_true",
+                        help="run every --model on each frame and show them side by side (instead of n/p switching)")
     args = parser.parse_args()
 
     source = int(args.source) if args.source.isdigit() else args.source
@@ -138,33 +140,50 @@ def main():
     frames = camera_frames(source, args.width, args.height, args.rotate) if is_camera else file_frames(source)
     fps, last = None, time.perf_counter()
     for index, frame in enumerate(frames):
-        name = names[active]
-        probes = predictors[active](frame)
-        if direction_model is not None:
-            probes = apply_direction(direction_model, frame, probes, args.conf, args.device, args.direction_tta)
-        now = time.perf_counter()
-        fps = 1 / (now - last) if fps is None else 0.9 * fps + 0.1 / (now - last)  # smoothed
-        last = now
-        print(json.dumps({"frame": index, "model": Path(name).stem, "probes": [p.to_message() for p in probes]}),
-              flush=True)
         if raw_dir and index % args.raw_every == 0:
             # session prefix keeps one run in one split
             cv2.imwrite(str(raw_dir / f"live{session}_{index:06d}.jpg"), frame)
-        if save_dir or args.show:
-            image = draw(frame, probes, arrows=direction_model is not None)
-            if save_dir and (probes or not args.save_detections_only):
-                cv2.imwrite(str(save_dir / f"{index:06d}_{Path(name).stem}.jpg"), image)
-            if args.show:
-                cv2.putText(image, f"{Path(name).stem}  {fps:.1f} fps  {len(probes)} probe(s)", (10, 24),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
-                cv2.imshow("probes (Esc or q to quit)", image)
-                key = cv2.waitKey(1)
-                if key in (27, ord("q")):
-                    break
-                if key in (ord("n"), ord("p")):
-                    active = (active + (1 if key == ord("n") else -1)) % len(names)
-                    fps = None
+        which = range(len(names)) if args.tile else [active]
+        tiles = []
+        for i in which:
+            name = Path(names[i]).stem
+            probes = predictors[i](frame)
+            if direction_model is not None:
+                probes = apply_direction(direction_model, frame, probes, args.conf, args.device, args.direction_tta)
+            print(json.dumps({"frame": index, "model": name, "probes": [p.to_message() for p in probes]}), flush=True)
+            if save_dir or args.show:
+                image = draw(frame, probes, arrows=direction_model is not None)
+                if save_dir and (probes or not args.save_detections_only):
+                    cv2.imwrite(str(save_dir / f"{index:06d}_{name}.jpg"), image)
+                tiles.append((name, len(probes), image))
+        now = time.perf_counter()
+        fps = 1 / (now - last) if fps is None else 0.9 * fps + 0.1 / (now - last)  # smoothed
+        last = now
+        if args.show:
+            for name, count, image in tiles:
+                cv2.putText(image, f"{name}  {fps:.1f} fps  {count} probe(s)", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.imshow("probes (Esc or q to quit)", tile_images([t[2] for t in tiles]))
+            key = cv2.waitKey(1)
+            if key in (27, ord("q")):
+                break
+            if key in (ord("n"), ord("p")) and not args.tile:
+                active = (active + (1 if key == ord("n") else -1)) % len(names)
+                fps = None
 
+
+def tile_images(images, max_width=1900):
+    """Images side by side (two rows for four or more), scaled to fit the screen width."""
+    if len(images) == 1:
+        return images[0]
+    columns = len(images) if len(images) <= 3 else (len(images) + 1) // 2
+    h, w = images[0].shape[:2]
+    scale = min(1.0, max_width / (columns * w))
+    size = (int(w * scale), int(h * scale))
+    images = [cv2.resize(im, size, interpolation=cv2.INTER_AREA) for im in images]
+    images += [np.zeros_like(images[0])] * (-len(images) % columns)
+    rows = [np.hstack(images[r:r + columns]) for r in range(0, len(images), columns)]
+    return np.vstack(rows)
 
 if __name__ == "__main__":
     main()

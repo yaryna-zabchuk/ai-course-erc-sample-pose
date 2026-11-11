@@ -25,5 +25,5 @@ OUT=field/$(date +%Y%m%d-%H%M%S)_$(basename "$CAMERA")
 mkdir -p "$OUT"
 echo "models: $*  camera: $SOURCE  saving to $OUT" >&2
 $PY -m erc_pose.infer --model "$@" --source "$SOURCE" --rotate $ROTATE --show \
-    --save "$OUT/frames" --save-detections-only --save-raw "$OUT/raw" --raw-every 10 \
+    ${TILE:+--tile} --save "$OUT/frames" --save-detections-only --save-raw "$OUT/raw" --raw-every 10 \
     | tee "$OUT/detections.jsonl"
